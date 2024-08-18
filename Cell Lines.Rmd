@@ -1,0 +1,589 @@
+---
+title: "Cell Lines"
+output: html_notebook
+---
+
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
+
+Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Ctrl+Shift+Enter*. 
+
+
+```{r}
+# Load necessary library
+
+
+library(ggridges)
+library(ggridges)
+library(effsize)
+library(dplyr)
+library(ggplot2)
+library(car)
+library(tidyverse)
+library(DescTools)
+
+
+```
+
+```{r}
+# Analyzing based on the different cell lines data
+```
+
+```{r}
+# Define the file paths for each group
+au565_files <- c("AU565_Alternative_3prime_filtered_yes.tsv", "AU565_Alternative_5prime_filtered_yes.tsv", 
+                 "AU565_Intron_Retention_filtered_yes.tsv", "AU565_Mutually_Exclusive_Exon_filtered_yes.tsv", 
+                 "AU565_Skipped_Exon_filtered_yes.tsv")
+
+bulk_mcf_files <- c("BULK_MCF_Alternative_3prime_filtered_yes.tsv", "BULK_MCF_Alternative_5prime_filtered_yes.tsv", 
+                    "BULK_MCF_Intron_Retention_filtered_yes.tsv", "BULK_MCF_Mutually_Exclusive_Exon_filtered_yes.tsv", 
+                    "BULK_MCF_Skipped_Exon_filtered_yes.tsv")
+
+ito_files <- c("itoAlternative_3prime_filtered_yes.tsv", "itoAlternative_5prime_filtered_yes.tsv", 
+               "itoIntron_Retention_filtered_yes.tsv", "itoMutually_Exclusive_Exon_filtered_yes.tsv", 
+               "itoSkipped_Exon_filtered_yes.tsv")
+
+mcf7_files <- c("MCF7_Alternative_3prime_filtered_yes.tsv", "MCF7_Alternative_5prime_filtered_yes.tsv", 
+                "MCF7_Intron_Retention_filtered_yes.tsv", "MCF7_Mutually_Exclusive_Exon_filtered_yes.tsv", 
+                "MCF7_Skipped_Exon_filtered_yes.tsv")
+
+mcf10_files <- c("MCF10_Alternative_3prime_filtered_yes.tsv", "MCF10_Alternative_5prime_filtered_yes.tsv", 
+                 "MCF10_Intron_Retention_filtered_yes.tsv", "MCF10_Mutually_Exclusive_Exon_filtered_yes.tsv", 
+                 "MCF10_Skipped_Exon_filtered_yes.tsv")
+
+# Function to extract unique genes and save to file
+extract_and_save_genes <- function(files, output_file) {
+  unique_gene_ids <- c()
+  
+  for (file in files) {
+    df <- read.csv(file, sep = "\t")
+    if ("GeneID" %in% colnames(df)) {
+      unique_gene_ids <- union(unique_gene_ids, unique(df$GeneID))
+    }
+  }
+  
+  unique_genes_df <- data.frame(GeneID = unique_gene_ids)
+  write.csv(unique_genes_df, output_file, row.names = FALSE)
+}
+
+# Extract and save unique genes for each dataset
+extract_and_save_genes(au565_files, "AU565_Genes.csv")
+extract_and_save_genes(bulk_mcf_files, "BULK_MCF_Genes.csv")
+extract_and_save_genes(ito_files, "Ito_Genes.csv")
+extract_and_save_genes(mcf7_files, "MCF7_Genes.csv")
+extract_and_save_genes(mcf10_files, "MCF10_Genes.csv")
+
+```
+
+```{r}
+# Number of significant genes per dataset 
+
+# AU565
+print(length(read.csv("AU565_Genes.csv")$GeneID))
+
+
+# BULK_MCF
+print(length(read.csv("BULK_MCF_Genes.csv")$GeneID))
+
+
+# ITO
+print(length(read.csv("Ito_Genes.csv")$GeneID))
+
+
+# MCF7
+print(length(read.csv("MCF7_Genes.csv")$GeneID))
+
+
+# MCF10
+print(length(read.csv("MCF10_Genes.csv")$GeneID))
+
+
+
+```
+
+
+
+```{r}
+# Function to filter exons.bed data based on genes from a file and save to new BED file
+filter_and_save_exons <- function(genes_file, exons_bed_file, output_file) {
+  genes <- read.csv(genes_file)$GeneID
+  exons <- read.table(exons_bed_file, header = FALSE, sep = "\t", stringsAsFactors = FALSE)
+  colnames(exons) <- c("chrom", "chromStart", "chromEnd", "strand", "transcriptID", "geneID", "exonLength")
+  filtered_exons <- exons %>% filter(geneID %in% genes)
+  write.table(filtered_exons, file = output_file, sep = "\t", row.names = FALSE, col.names = FALSE, quote = FALSE)
+}
+
+# File path for the exons.bed file
+exons_bed_file <- "exons.bed"
+
+# Apply the function to each set of genes and save the filtered exons data
+filter_and_save_exons("AU565_Genes.csv", exons_bed_file, "AU565_exons.bed")
+filter_and_save_exons("BULK_MCF_Genes.csv", exons_bed_file, "BULK_MCF_exons.bed")
+filter_and_save_exons("Ito_Genes.csv", exons_bed_file, "Ito_exons.bed")
+filter_and_save_exons("MCF7_Genes.csv", exons_bed_file, "MCF7_exons.bed")
+filter_and_save_exons("MCF10_Genes.csv", exons_bed_file, "MCF10_exons.bed")
+
+```
+
+```{r}
+# Function to read, deduplicate based on chromStart and chromEnd
+read_and_deduplicate_exons <- function(exons_file) {
+  filtered_exons <- read.table(exons_file, header = FALSE, sep = "\t", stringsAsFactors = FALSE)
+  colnames(filtered_exons) <- c("chrom", "chromStart", "chromEnd", "strand", "transcriptID", "geneID", "exonLength")
+  deduplicated_exons <- filtered_exons[!duplicated(filtered_exons[, c("chromStart", "chromEnd")]), ]
+  return(deduplicated_exons)
+}
+
+# Read, deduplicate, and assign each filtered exons file to separate variables
+deduplicated_AU565_exons <- read_and_deduplicate_exons("AU565_exons.bed")
+deduplicated_BULK_MCF_exons <- read_and_deduplicate_exons("BULK_MCF_exons.bed")
+deduplicated_Ito_exons <- read_and_deduplicate_exons("Ito_exons.bed")
+deduplicated_MCF7_exons <- read_and_deduplicate_exons("MCF7_exons.bed")
+deduplicated_MCF10_exons <- read_and_deduplicate_exons("MCF10_exons.bed")
+
+```
+
+```{r}
+print(deduplicated_AU565_exons) 
+print(deduplicated_BULK_MCF_exons) 
+ 
+print(deduplicated_Ito_exons) 
+ 
+print(deduplicated_MCF7_exons) 
+ 
+print(deduplicated_MCF10_exons) 
+ 
+```
+
+```{r}
+# Exons per gene
+count_exons_per_gene <- function(deduplicated_exons_df, output_file) {
+  exons_per_gene <- deduplicated_exons_df %>% group_by(geneID) %>% summarize(exonCount = n())
+  write.csv(exons_per_gene, file = output_file, row.names = FALSE)
+  return(exons_per_gene)
+}
+
+# Count exons per gene for each deduplicated file
+exons_per_gene_AU565 <- count_exons_per_gene(deduplicated_AU565_exons, "exons_per_gene_AU565.csv")
+exons_per_gene_BULK_MCF <- count_exons_per_gene(deduplicated_BULK_MCF_exons, "exons_per_gene_BULK_MCF.csv")
+exons_per_gene_Ito <- count_exons_per_gene(deduplicated_Ito_exons, "exons_per_gene_Ito.csv")
+exons_per_gene_MCF7 <- count_exons_per_gene(deduplicated_MCF7_exons, "exons_per_gene_MCF7.csv")
+exons_per_gene_MCF10 <- count_exons_per_gene(deduplicated_MCF10_exons, "exons_per_gene_MCF10.csv")
+```
+
+```{r}
+# ANOVA test for exons per gene
+# Combine the exon counts per gene into a single data frame
+exons_per_gene_combined <- bind_rows(
+  exons_per_gene_AU565 %>% mutate(group = "AU565"),
+  exons_per_gene_BULK_MCF %>% mutate(group = "BULK_MCF"),
+  exons_per_gene_Ito %>% mutate(group = "Ito"),
+  exons_per_gene_MCF7 %>% mutate(group = "MCF7"),
+  exons_per_gene_MCF10 %>% mutate(group = "MCF10")
+)
+
+# Perform ANOVA for exon count per gene
+anova_exon_count <- aov(exonCount ~ group, data = exons_per_gene_combined)
+summary(anova_exon_count)
+
+# Effect Size Test
+EtaSq(anova_exon_count)
+```
+
+```{r}
+# Exons Length
+
+exon_lengths_combined <- bind_rows(
+  deduplicated_AU565_exons %>% mutate(group = "AU565"),
+  deduplicated_BULK_MCF_exons %>% mutate(group = "BULK_MCF"),
+  deduplicated_Ito_exons %>% mutate(group = "Ito"),
+  deduplicated_MCF7_exons %>% mutate(group = "MCF7"),
+  deduplicated_MCF10_exons %>% mutate(group = "MCF10")
+)
+
+# Perform ANOVA for exon length
+anova_exon_length <- aov(exonLength ~ group, data = exon_lengths_combined)
+summary(anova_exon_length)
+EtaSq(anova_exon_length)
+
+```
+```{r}
+# Define the function to calculate mean exon length per gene and save the result as a CSV file
+calculate_mean_exon_length <- function(deduplicated_exons_df, output_file) {
+  Exon_Length_data <- deduplicated_exons_df %>%
+    group_by(geneID) %>%
+    summarise(exonLength = mean(exonLength))
+  write.csv(Exon_Length_data, file = output_file, row.names = FALSE)
+  return(Exon_Length_data)
+}
+
+# Calculate mean exon length per gene for each deduplicated file and save the results as CSV files
+mean_exon_length_AU565 <- calculate_mean_exon_length(deduplicated_AU565_exons, "ExonLength_AU565.csv")
+mean_exon_length_BULK_MCF <- calculate_mean_exon_length(deduplicated_BULK_MCF_exons, "ExonLength_BULK_MCF.csv")
+mean_exon_length_Ito <- calculate_mean_exon_length(deduplicated_Ito_exons, "ExonLength_Ito.csv")
+mean_exon_length_MCF7 <- calculate_mean_exon_length(deduplicated_MCF7_exons, "ExonLength_MCF7.csv")
+mean_exon_length_MCF10 <- calculate_mean_exon_length(deduplicated_MCF10_exons, "ExonLength_MCF10.csv")
+```
+
+```{r}
+# Summary statistics for exon counts per gene
+exon_count_summary_AU565 <- summary(exons_per_gene_AU565$exonCount)
+exon_count_summary_BULK_MCF <- summary(exons_per_gene_BULK_MCF$exonCount)
+exon_count_summary_Ito <- summary(exons_per_gene_Ito$exonCount)
+exon_count_summary_MCF7 <- summary(exons_per_gene_MCF7$exonCount)
+exon_count_summary_MCF10 <- summary(exons_per_gene_MCF10$exonCount)
+
+# Print the summaries for exon counts per gene
+print(exon_count_summary_AU565)
+print(exon_count_summary_BULK_MCF)
+print(exon_count_summary_Ito)
+print(exon_count_summary_MCF7)
+print(exon_count_summary_MCF10)
+```
+```{r}
+# Get summary statistics for exon lengths
+exon_length_summary_AU565 <- summary(deduplicated_AU565_exons$exonLength)
+exon_length_summary_BULK_MCF <- summary(deduplicated_BULK_MCF_exons$exonLength)
+exon_length_summary_Ito <- summary(deduplicated_Ito_exons$exonLength)
+exon_length_summary_MCF7 <- summary(deduplicated_MCF7_exons$exonLength)
+exon_length_summary_MCF10 <- summary(deduplicated_MCF10_exons$exonLength)
+
+# Print the summaries for exon lengths
+print(exon_length_summary_AU565)
+print(exon_length_summary_BULK_MCF)
+print(exon_length_summary_Ito)
+print(exon_length_summary_MCF7)
+print(exon_length_summary_MCF10)
+```
+```{r}
+# The same process is done for the introns
+
+# Function to filter introns.bed data 
+
+filter_and_save_introns <- function(genes_file, introns_bed_file, output_file) {
+  genes <- read.csv(genes_file)$GeneID
+  introns <- read.table(introns_bed_file, header = FALSE, sep = "\t", stringsAsFactors = FALSE)
+  colnames(introns) <- c("chrom", "chromStart", "chromEnd", "strand", "transcriptID", "geneID", "intronLength")
+  filtered_introns <- introns %>% filter(geneID %in% genes)
+  write.table(filtered_introns, file = output_file, sep = "\t", row.names = FALSE, col.names = FALSE, quote = FALSE)
+}
+
+# File path for the introns.bed file
+introns_bed_file <- "introns.bed"
+
+# Apply the function to each set of genes and save the filtered introns data
+filter_and_save_introns("AU565_Genes.csv", introns_bed_file, "AU565_introns.bed")
+filter_and_save_introns("BULK_MCF_Genes.csv", introns_bed_file, "BULK_MCF_introns.bed")
+filter_and_save_introns("Ito_Genes.csv", introns_bed_file, "Ito_introns.bed")
+filter_and_save_introns("MCF7_Genes.csv", introns_bed_file, "MCF7_introns.bed")
+filter_and_save_introns("MCF10_Genes.csv", introns_bed_file, "MCF10_introns.bed")
+
+```
+
+
+```{r}
+
+# Function to deduplicate based on chromStart and chromEnd
+
+read_and_deduplicate_introns <- function(introns_file) {
+  filtered_introns <- read.table(introns_file, header = FALSE, sep = "\t", stringsAsFactors = FALSE)
+  colnames(filtered_introns) <- c("chrom", "chromStart", "chromEnd", "strand", "transcriptID", "geneID", "intronLength")
+  deduplicated_introns <- filtered_introns[!duplicated(filtered_introns[, c("chromStart", "chromEnd")]), ]
+  return(deduplicated_introns)
+}
+
+# Read, deduplicate, and assign each filtered introns file to separate variables
+deduplicated_AU565_introns <- read_and_deduplicate_introns("AU565_introns.bed")
+deduplicated_BULK_MCF_introns <- read_and_deduplicate_introns("BULK_MCF_introns.bed")
+deduplicated_Ito_introns <- read_and_deduplicate_introns("Ito_introns.bed")
+deduplicated_MCF7_introns <- read_and_deduplicate_introns("MCF7_introns.bed")
+deduplicated_MCF10_introns <- read_and_deduplicate_introns("MCF10_introns.bed")
+
+```
+
+```{r}
+print(deduplicated_AU565_introns) 
+print(deduplicated_BULK_MCF_introns) 
+ 
+print(deduplicated_Ito_introns) 
+ 
+print(deduplicated_MCF7_introns) 
+ 
+print(deduplicated_MCF10_introns) 
+```
+
+```{r}
+# Introns per gene
+count_introns_per_gene <- function(deduplicated_introns_df, output_file) {
+  introns_per_gene <- deduplicated_introns_df %>% group_by(geneID) %>% summarize(intronCount = n())
+  write.csv(introns_per_gene, file = output_file, row.names = FALSE)
+  return(introns_per_gene)
+}
+
+# Count introns per gene for each deduplicated file
+introns_per_gene_AU565 <- count_introns_per_gene(deduplicated_AU565_introns, "IntronCount_AU565.csv")
+introns_per_gene_BULK_MCF <- count_introns_per_gene(deduplicated_BULK_MCF_introns, "IntronCount_BULK_MCF.csv")
+introns_per_gene_Ito <- count_introns_per_gene(deduplicated_Ito_introns, "IntronCount_Ito.csv")
+introns_per_gene_MCF7 <- count_introns_per_gene(deduplicated_MCF7_introns, "IntronCount_MCF7.csv")
+introns_per_gene_MCF10 <- count_introns_per_gene(deduplicated_MCF10_introns, "IntronCount_MCF10.csv")
+```
+
+```{r}
+# ANOVA test for introns per gene
+introns_per_gene_combined <- bind_rows(
+  introns_per_gene_AU565 %>% mutate(group = "AU565"),
+  introns_per_gene_BULK_MCF %>% mutate(group = "BULK_MCF"),
+  introns_per_gene_Ito %>% mutate(group = "Ito"),
+  introns_per_gene_MCF7 %>% mutate(group = "MCF7"),
+  introns_per_gene_MCF10 %>% mutate(group = "MCF10")
+)
+
+# Perform ANOVA for intron count per gene
+anova_intron_count <- aov(intronCount ~ group, data = introns_per_gene_combined)
+summary(anova_intron_count)
+
+# Effect Size Test
+EtaSq(anova_intron_count)
+
+```
+```{r}
+# Intron lengths
+intron_lengths_combined <- bind_rows(
+  deduplicated_AU565_introns %>% mutate(group = "AU565"),
+  deduplicated_BULK_MCF_introns %>% mutate(group = "BULK_MCF"),
+  deduplicated_Ito_introns %>% mutate(group = "Ito"),
+  deduplicated_MCF7_introns %>% mutate(group = "MCF7"),
+  deduplicated_MCF10_introns %>% mutate(group = "MCF10")
+)
+
+# Perform ANOVA for intron length
+anova_intron_length <- aov(intronLength ~ group, data = intron_lengths_combined)
+summary(anova_intron_length)
+
+# Effect Size Test
+EtaSq(anova_intron_length)
+```
+```{r}
+# Define the function to calculate mean intron length per gene and save the result as a CSV file
+calculate_mean_intron_length <- function(deduplicated_introns_df, output_file) {
+  Intron_Length_data <- deduplicated_introns_df %>%
+    group_by(geneID) %>%
+    summarise(intronLength = mean(intronLength))
+  write.csv(Intron_Length_data, file = output_file, row.names = FALSE)
+  return(Intron_Length_data)
+}
+
+# Calculate mean intron length per gene for each deduplicated file and save the results as CSV files
+intron_length_AU565 <- calculate_mean_intron_length(deduplicated_AU565_introns, "IntronLength_AU565.csv")
+intron_length_BULK_MCF <- calculate_mean_intron_length(deduplicated_BULK_MCF_introns, "IntronLength_BULK_MCF.csv")
+intron_length_Ito <- calculate_mean_intron_length(deduplicated_Ito_introns, "IntronLength_Ito.csv")
+intron_length_MCF7 <- calculate_mean_intron_length(deduplicated_MCF7_introns, "IntronLength_MCF7.csv")
+intron_length_MCF10 <- calculate_mean_intron_length(deduplicated_MCF10_introns, "IntronLength_MCF10.csv")
+```
+
+```{r}
+# Get summary statistics for intron counts per gene
+intron_count_summary_AU565 <- summary(introns_per_gene_AU565$intronCount)
+intron_count_summary_BULK_MCF <- summary(introns_per_gene_BULK_MCF$intronCount)
+intron_count_summary_Ito <- summary(introns_per_gene_Ito$intronCount)
+intron_count_summary_MCF7 <- summary(introns_per_gene_MCF7$intronCount)
+intron_count_summary_MCF10 <- summary(introns_per_gene_MCF10$intronCount)
+
+# Print the summaries for intron counts per gene
+print(intron_count_summary_AU565)
+print(intron_count_summary_BULK_MCF)
+print(intron_count_summary_Ito)
+print(intron_count_summary_MCF7)
+print(intron_count_summary_MCF10)
+
+```
+```{r}
+# Get summary statistics for intron lengths
+intron_length_summary_AU565 <- summary(deduplicated_AU565_introns$intronLength)
+intron_length_summary_BULK_MCF <- summary(deduplicated_BULK_MCF_introns$intronLength)
+intron_length_summary_Ito <- summary(deduplicated_Ito_introns$intronLength)
+intron_length_summary_MCF7 <- summary(deduplicated_MCF7_introns$intronLength)
+intron_length_summary_MCF10 <- summary(deduplicated_MCF10_introns$intronLength)
+
+# Print the summaries for intron lengths
+print(intron_length_summary_AU565)
+print(intron_length_summary_BULK_MCF)
+print(intron_length_summary_Ito)
+print(intron_length_summary_MCF7)
+print(intron_length_summary_MCF10)
+
+```
+```{r}
+# Gene Length
+
+# Function to filter gene lengths
+filter_and_save_gene_lengths <- function(genes_file, gene_length_file, output_file) {
+  # Read the genes from the CSV file
+  genes <- read.csv(genes_file)$GeneID
+  
+  # Read the gene length file into a data frame
+  gene_lengths <- read.table(gene_length_file, header = TRUE, sep = "\t", stringsAsFactors = FALSE)
+  
+  # Filter the gene lengths data to include only the genes from the genes file
+  filtered_gene_lengths <- gene_lengths %>% filter(gene %in% genes)
+  
+  # Save the filtered gene lengths data to a new file
+  write.table(filtered_gene_lengths, file = output_file, sep = "\t", row.names = FALSE, col.names = TRUE, quote = FALSE)
+}
+
+# File path for the gene_length.txt file
+gene_length_file <- "gene_length.txt"
+
+# Apply the function to each set of genes and save the filtered gene lengths data
+filter_and_save_gene_lengths("AU565_Genes.csv", gene_length_file, "AU565_gene_lengths.csv")
+filter_and_save_gene_lengths("BULK_MCF_Genes.csv", gene_length_file, "BULK_MCF_gene_lengths.csv")
+filter_and_save_gene_lengths("Ito_Genes.csv", gene_length_file, "Ito_gene_lengths.csv")
+filter_and_save_gene_lengths("MCF7_Genes.csv", gene_length_file, "MCF7_gene_lengths.csv")
+filter_and_save_gene_lengths("MCF10_Genes.csv", gene_length_file, "MCF10_gene_lengths.csv")
+```
+
+```{r}
+# Read and print the gene length files
+read_gene_lengths <- function(gene_lengths_file) {
+  # Read the filtered gene lengths file into a data frame
+  gene_lengths <- read.table(gene_lengths_file, header = TRUE, sep = "\t", stringsAsFactors = FALSE)
+  
+  # Return the gene lengths data frame
+  return(gene_lengths)
+}
+
+# Read and assign each filtered gene lengths file to separate variables
+filtered_AU565_gene_lengths <- read_gene_lengths("AU565_gene_lengths.csv")
+filtered_BULK_MCF_gene_lengths <- read_gene_lengths("BULK_MCF_gene_lengths.csv")
+filtered_Ito_gene_lengths <- read_gene_lengths("Ito_gene_lengths.csv")
+filtered_MCF7_gene_lengths <- read_gene_lengths("MCF7_gene_lengths.csv")
+filtered_MCF10_gene_lengths <- read_gene_lengths("MCF10_gene_lengths.csv")
+
+# Print each filtered gene lengths data frame
+print(filtered_AU565_gene_lengths)
+print(filtered_BULK_MCF_gene_lengths)
+print(filtered_Ito_gene_lengths)
+print(filtered_MCF7_gene_lengths)
+print(filtered_MCF10_gene_lengths)
+
+```
+```{r}
+# Get summary statistics for gene lengths
+gene_length_summary_AU565 <- summary(filtered_AU565_gene_lengths$mean)
+gene_length_summary_BULK_MCF <- summary(filtered_BULK_MCF_gene_lengths$mean)
+gene_length_summary_Ito <- summary(filtered_Ito_gene_lengths$mean)
+gene_length_summary_MCF7 <- summary(filtered_MCF7_gene_lengths$mean)
+gene_length_summary_MCF10 <- summary(filtered_MCF10_gene_lengths$mean)
+
+# Print the summaries for gene lengths
+print(gene_length_summary_AU565)
+print(gene_length_summary_BULK_MCF)
+print(gene_length_summary_Ito)
+print(gene_length_summary_MCF7)
+print(gene_length_summary_MCF10)
+
+```
+```{r}
+# ANOVA test for gene lengths
+gene_lengths_combined <- bind_rows(
+  filtered_AU565_gene_lengths %>% mutate(group = "AU565"),
+  filtered_BULK_MCF_gene_lengths %>% mutate(group = "BULK_MCF"),
+  filtered_Ito_gene_lengths %>% mutate(group = "Ito"),
+  filtered_MCF7_gene_lengths %>% mutate(group = "MCF7"),
+  filtered_MCF10_gene_lengths %>% mutate(group = "MCF10")
+)
+
+# Perform ANOVA for gene lengths
+anova_gene_length <- aov(mean ~ group, data = gene_lengths_combined)
+summary(anova_gene_length)
+
+# Perform effect size test for gene lengths
+EtaSq(anova_gene_length)
+```
+```{r}
+
+# Perform ANOVA for GC content
+
+GC_AU565 <- read.csv("GC_AU565.csv", header = TRUE, stringsAsFactors = FALSE)
+GC_BULK_MCF <- read.csv("GC_BULK_MCF.csv", header = TRUE, stringsAsFactors = FALSE)
+GC_Ito <- read.csv("GC_Ito.csv", header = TRUE, stringsAsFactors = FALSE)
+GC_MCF7 <- read.csv("GC_MCF7.csv", header = TRUE, stringsAsFactors = FALSE)
+GC_MCF10 <- read.csv("GC_MCF10.csv", header = TRUE, stringsAsFactors = FALSE)
+
+gc_content_combined <- bind_rows(
+  GC_AU565 %>% mutate(group = "AU565"),
+  GC_BULK_MCF %>% mutate(group = "BULK_MCF"),
+  GC_Ito %>% mutate(group = "Ito"),
+  GC_MCF7 %>% mutate(group = "MCF7"),
+  GC_MCF10 %>% mutate(group = "MCF10")
+)
+
+
+anova_gene_length <- aov(gc_content ~ group, data = gc_content_combined)
+summary(anova_gene_length)
+
+# Perform effect size test
+
+EtaSq(anova_gene_length)
+
+```
+
+```{r}
+# Get summary statistics for GC content 
+
+print(summary(GC_AU565$gc_content))
+
+print(summary(GC_BULK_MCF$gc_content))
+
+print(summary(GC_Ito$gc_content))
+
+print(summary(GC_MCF7$gc_content))
+print(summary(GC_MCF10$gc_content))
+
+
+```
+
+```{r}
+# Perform ANOVA for Splice Site Strength
+
+# #SSS = splice site strength
+
+SSS_AU565 <- read.csv("SSS_AU565.txt", header = FALSE, col.names = "SSS")
+SSS_BULK_MCF <- read.csv("SSS_BULK_MCF.txt", header = FALSE, col.names = "SSS")
+SSS_Ito <- read.csv("SSS_Ito.txt", header = FALSE, col.names = "SSS")
+SSS_MCF7 <- read.csv("SSS_MCF7.txt", header = FALSE, col.names = "SSS")
+SSS_MCF10 <- read.csv("SSS_MCF10.txt", header = FALSE, col.names = "SSS")
+
+
+# Combine the data frames into a single data frame
+sss_combined <- bind_rows(
+  SSS_AU565 %>% mutate(group = "AU565"),
+  SSS_BULK_MCF %>% mutate(group = "BULK_MCF"),
+  SSS_Ito %>% mutate(group = "Ito"),
+  SSS_MCF7 %>% mutate(group = "MCF7"),
+  SSS_MCF10 %>% mutate(group = "MCF10")
+
+)
+
+# Perform ANOVA for splice site strength
+anova_sss <- aov(SSS ~ group, data = sss_combined)
+summary(anova_sss)
+
+# Perform effect size test
+EtaSq(anova_sss)
+
+```
+
+```{r}
+# Get summary statistics for Splice Site Strength
+
+summary(SSS_AU565$SSS)
+
+summary(SSS_BULK_MCF$SSS)
+
+summary(SSS_Ito$SSS)
+
+summary(SSS_MCF7$SSS)
+summary(SSS_MCF10$SSS)
+
+```
+

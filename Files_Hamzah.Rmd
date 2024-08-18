@@ -1,0 +1,442 @@
+---
+title: "Files"
+output: html_notebook
+date: "2024-06-15"
+---
+
+
+
+
+```{r}
+library(rtracklayer)
+library(tidyverse)
+library(ggplot2)
+library(dplyr)
+```
+
+
+#define the files of alternative 3 and 5 prime
+```{r}
+files <- list(
+  "AU565_Alternative_3prime_filtered_yes.tsv",
+  "AU565_Alternative_5prime_filtered_yes.tsv",
+  "BULK_MCF_Alternative_3prime_filtered_yes.tsv",
+  "BULK_MCF_Alternative_5prime_filtered_yes.tsv",
+  "itoAlternative_3prime_filtered_yes.tsv",
+  "itoAlternative_5prime_filtered_yes.tsv",
+  "MCF7_Alternative_3prime_filtered_yes.tsv",
+  "MCF7_Alternative_5prime_filtered_yes.tsv",
+  "MCF10_Alternative_3prime_filtered_yes.tsv",
+  "MCF10_Alternative_5prime_filtered_yes.tsv"
+)
+```
+
+#combine the files into a single tidy dataset 
+```{r}
+combined_data <- files %>% lapply(read.delim, header = TRUE, sep = "\t") %>% bind_rows
+```
+
+```{r}
+write.table(combined_data, "combined_tidy_3_5_prime.tsv", sep = "\t", row.names = FALSE, quote = FALSE)
+
+```
+
+
+
+
+
+
+#Now we do the same process for the other alternative splicing events
+
+
+#define the files of intron retention 
+```{r}
+files <- list(
+  "AU565_Intron_Retention_filtered_yes.tsv",
+  "BULK_MCF_Intron_Retention_filtered_yes.tsv",
+  "itoIntron_Retention_filtered_yes.tsv",
+  "MCF7_Intron_Retention_filtered_yes.tsv",
+  "MCF10_Intron_Retention_filtered_yes.tsv"
+)
+  
+```
+
+#combine the files into a single tidy dataset 
+```{r}
+combined_data <- files %>% lapply(read.delim, header = TRUE, sep = "\t") %>% bind_rows
+```
+
+```{r}
+write.table(combined_data, "combined_tidy_Intron_Retention.tsv", sep = "\t", row.names = FALSE, quote = FALSE)
+
+```
+
+
+
+
+
+
+
+
+
+#define the files of mutually excluse exon  
+```{r}
+files <- list(
+  "AU565_Mutually_Exclusive_Exon_filtered_yes.tsv",
+  "BULK_MCF_Mutually_Exclusive_Exon_filtered_yes.tsv",
+  "itoMutually_Exclusive_Exon_filtered_yes.tsv",
+  "MCF7_Mutually_Exclusive_Exon_filtered_yes.tsv",
+  "MCF10_Mutually_Exclusive_Exon_filtered_yes.tsv"
+)
+
+  
+```
+
+#combine the files into a single tidy dataset 
+```{r}
+combined_data <- files %>% lapply(read.delim, header = TRUE, sep = "\t") %>% bind_rows
+```
+
+```{r}
+write.table(combined_data, "combined_tidy_Mutually_ExclusiveExon.tsv", sep = "\t", row.names = FALSE, quote = FALSE)
+
+```
+
+
+
+
+
+
+
+#define the files of skipped exons
+```{r}
+files <- list(
+  "AU565_Skipped_Exon_filtered_yes.tsv",
+  "BULK_MCF_Skipped_Exon_filtered_yes.tsv",
+  "itoSkipped_Exon_filtered_yes.tsv",
+  "MCF7_Skipped_Exon_filtered_yes.tsv",
+  "MCF10_Skipped_Exon_filtered_yes.tsv" 
+)
+
+  
+```
+
+#combine the files into a single tidy dataset 
+```{r}
+combined_data <- files %>% lapply(read.delim, header = TRUE, sep = "\t") %>% bind_rows
+```
+
+```{r}
+write.table(combined_data, "combined_tidy_SkippedExon.tsv", sep = "\t", row.names = FALSE, quote = FALSE)
+
+```
+
+
+
+
+
+
+
+
+
+
+##Create a bar plot to show the quantities of each significant alternative splicing event in the breast cancer cell lines.
+
+#define the files
+```{r}
+files <- list(
+  "Alternative 3 and 5 prime" = "combined_tidy_3_5_prime.tsv",
+  "Intron Retention" = "combined_tidy_Intron_Retention.tsv",
+  "Mutually Exclusive Exon" = "combined_tidy_Mutually_ExclusiveExon.tsv",
+  "Skipped Exon" = "combined_tidy_SkippedExon.tsv"
+)
+```
+
+# Initialize a data frame to store row counts
+```{r}
+file_row_counts <- data.frame(File = character(), Count = integer(), stringsAsFactors = FALSE)
+```
+
+
+# Read each file and count the rows
+
+```{r}
+for (file_name in names(files)) {
+  data <- read.delim(files[[file_name]], header = TRUE, sep = "\t")
+  file_row_counts <- rbind(file_row_counts, data.frame(File = file_name, Count = nrow(data)))
+}
+```
+
+# Print the row counts
+
+```{r}
+print(file_row_counts)
+```
+
+
+
+```{r}
+# Create a bar plot
+ggplot(file_row_counts, aes(x = File, y = Count)) +
+  geom_bar(stat = "identity", fill = "skyblue") +
+  labs(title = "Count of Each Splicing Event",
+       x = "Alternative Splicing Event",
+       y = "Count") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  theme_minimal()
+
+# Save the plot
+ggsave("bar_plot_file_row_counts.png")
+```
+
+
+
+##Now we are going to show the distribution of the inclusion level difference for each type.
+```{r}
+files <- list(
+  "3_5_prime" = "combined_tidy_3_5_prime.tsv",
+  "Intron_Retention" = "combined_tidy_Intron_Retention.tsv",
+  "Mutually_ExclusiveExon" = "combined_tidy_Mutually_ExclusiveExon.tsv",
+  "SkippedExon" = "combined_tidy_SkippedExon.tsv"
+)
+
+
+
+# Read the data
+data <- read.delim(files[["3_5_prime"]], header = TRUE, sep = "\t")
+  
+  # Create density plot
+p <- ggplot(data, aes(x = IncLevelDifference)) +
+  geom_density(fill = "skyblue", alpha = 0.5) +
+    labs(title = "Distribution of the Inclusion Level of Alternative 3' and 5' Prime ",
+      x = "Inclusion Level Difference",
+      y = "Density") +
+  theme_minimal()
+  
+  # Save the plot
+ggsave("3_5_prime_density_plot_incleveldifference.png")
+print(p)
+
+```
+
+
+```{r}
+data <- read.delim(files[["Intron_Retention"]], header = TRUE, sep = "\t")
+  
+  # Create density plot
+p <- ggplot(data, aes(x = IncLevelDifference)) +
+  geom_density(fill = "skyblue", alpha = 0.5) +
+    labs(title = "Distribution of the Inclusion Level Difference of Intron Retention",
+      x = "Inclusion Level Difference",
+      y = "Density") +
+  theme_minimal()
+  
+  # Save the plot
+ggsave("Intron_Retention_density_plot_incleveldifference.png")
+print(p)
+```
+```{r}
+data <- read.delim(files[["Mutually_ExclusiveExon"]], header = TRUE, sep = "\t")
+  
+  # Create density plot
+p <- ggplot(data, aes(x = IncLevelDifference)) +
+  geom_density(fill = "skyblue", alpha = 0.5) +
+    labs(title = "Distribution of the Inclusion Level Difference of Mutually Exclusive Exon",
+      x = "Inclusion Level Difference",
+      y = "Density") +
+  theme_minimal()
+  
+  # Save the plot
+ggsave("Mutually_ExclusiveExon_density_plot_incleveldifference.png")
+print(p)
+```
+
+```{r}
+data <- read.delim(files[["SkippedExon"]], header = TRUE, sep = "\t")
+  
+  # Create density plot
+p <- ggplot(data, aes(x = IncLevelDifference)) +
+  geom_density(fill = "skyblue", alpha = 0.5) +
+    labs(title = "Distribution of the Inclusion Level Difference of Skipped Exon",
+      x = "Inclusion Level Difference",
+      y = "Density") +
+  theme_minimal()
+  
+  # Save the plot
+ggsave("SkippedExon_density_plot_incleveldifference.png")
+print(p)
+```
+
+
+
+##Ranking the files based on PValue to use them for Gene Enrichment Analysis
+```{r}
+# AU565
+# Read the significant files
+files <- list(
+  "AU565_Alternative_3prime_filtered_yes.tsv",
+  "AU565_Alternative_5prime_filtered_yes.tsv",
+  "AU565_Intron_Retention_filtered_yes.tsv",
+  "AU565_Mutually_Exclusive_Exon_filtered_yes.tsv",
+  "AU565_Skipped_Exon_filtered_yes.tsv"
+)
+
+# Read and combine the data from all files
+combined <- bind_rows(lapply(files, read.csv, sep = "\t"))
+
+# Select only the relevant columns
+combined <- combined %>% select(geneSymbol, PValue)
+
+# Order by p-value and remove duplicates
+ranked_genes <- combined %>%
+  arrange(PValue) %>%              # Order by p-value
+  distinct(geneSymbol, .keep_all = TRUE) %>%  # Keep only the first occurrence of each geneSymbol
+  select(geneSymbol)               # Select only the geneSymbol column
+print(ranked_genes)
+# Write the ranked gene list to a text file
+write.table(ranked_genes, 'AU565_GSEA.txt', row.names = FALSE, col.names = FALSE, quote = FALSE)
+```
+```{r}
+# bulk_mcf
+# Read the significant files
+files <- list(
+  "bulk_mcf_Alternative_3prime_filtered_yes.tsv",
+  "bulk_mcf_Alternative_5prime_filtered_yes.tsv",
+  "bulk_mcf_Intron_Retention_filtered_yes.tsv",
+  "bulk_mcf_Mutually_Exclusive_Exon_filtered_yes.tsv",
+  "bulk_mcf_Skipped_Exon_filtered_yes.tsv"
+)
+
+# Read and combine the data from all files
+combined <- bind_rows(lapply(files, read.csv, sep = "\t"))
+
+# Select only the relevant columns
+combined <- combined %>% select(geneSymbol, PValue)
+
+# Order by p-value and remove duplicates
+ranked_genes <- combined %>%
+  arrange(PValue) %>%              # Order by p-value
+  distinct(geneSymbol, .keep_all = TRUE) %>%  # Keep only the first occurrence of each geneSymbol
+  select(geneSymbol)               # Select only the geneSymbol column
+print(ranked_genes)
+# Write the ranked gene list to a text file
+write.table(ranked_genes, 'bulk_mcf_GSEA.txt', row.names = FALSE, col.names = FALSE, quote = FALSE)
+```
+
+```{r}
+# ito
+# Read the significant files
+files <- list(
+  "itoAlternative_3prime_filtered_yes.tsv",
+  "itoAlternative_5prime_filtered_yes.tsv",
+  "itoIntron_Retention_filtered_yes.tsv",
+  "itoMutually_Exclusive_Exon_filtered_yes.tsv",
+  "itoSkipped_Exon_filtered_yes.tsv"
+)
+
+# Read and combine the data from all files
+combined <- bind_rows(lapply(files, read.csv, sep = "\t"))
+
+# Select only the relevant columns
+combined <- combined %>% select(geneSymbol, PValue)
+
+# Order by p-value and remove duplicates
+ranked_genes <- combined %>%
+  arrange(PValue) %>%              # Order by p-value
+  distinct(geneSymbol, .keep_all = TRUE) %>%  # Keep only the first occurrence of each geneSymbol
+  select(geneSymbol)               # Select only the geneSymbol column
+print(ranked_genes)
+# Write the ranked gene list to a text file
+write.table(ranked_genes, 'ito_GSEA.txt', row.names = FALSE, col.names = FALSE, quote = FALSE)
+```
+
+```{r}
+# MCF7
+# Read the significant files
+files <- list(
+  "MCF7_Alternative_3prime_filtered_yes.tsv",
+  "MCF7_Alternative_5prime_filtered_yes.tsv",
+  "MCF7_Intron_Retention_filtered_yes.tsv",
+  "MCF7_Mutually_Exclusive_Exon_filtered_yes.tsv",
+  "MCF7_Skipped_Exon_filtered_yes.tsv"
+)
+
+# Read and combine the data from all files
+combined <- bind_rows(lapply(files, read.csv, sep = "\t"))
+
+# Select only the relevant columns
+combined <- combined %>% select(geneSymbol, PValue)
+
+# Order by p-value and remove duplicates
+ranked_genes <- combined %>%
+  arrange(PValue) %>%              # Order by p-value
+  distinct(geneSymbol, .keep_all = TRUE) %>%  # Keep only the first occurrence of each geneSymbol
+  select(geneSymbol)               # Select only the geneSymbol column
+print(ranked_genes)
+# Write the ranked gene list to a text file
+write.table(ranked_genes, 'MCF7_GSEA.txt', row.names = FALSE, col.names = FALSE, quote = FALSE)
+```
+
+
+
+```{r}
+# MCF10
+# Read the significant files
+files <- list(
+  "MCF10_Alternative_3prime_filtered_yes.tsv",
+  "MCF10_Alternative_5prime_filtered_yes.tsv",
+  "MCF10_Intron_Retention_filtered_yes.tsv",
+  "MCF10_Mutually_Exclusive_Exon_filtered_yes.tsv",
+  "MCF10_Skipped_Exon_filtered_yes.tsv"
+)
+
+# Read and combine the data from all files
+combined <- bind_rows(lapply(files, read.csv, sep = "\t"))
+
+# Select only the relevant columns
+combined <- combined %>% select(geneSymbol, PValue)
+
+# Order by p-value and remove duplicates
+ranked_genes <- combined %>%
+  arrange(PValue) %>%              # Order by p-value
+  distinct(geneSymbol, .keep_all = TRUE) %>%  # Keep only the first occurrence of each geneSymbol
+  select(geneSymbol)               # Select only the geneSymbol column
+print(ranked_genes)
+# Write the ranked gene list to a text file
+write.table(ranked_genes, 'MCF10_GSEA.txt', row.names = FALSE, col.names = FALSE, quote = FALSE)
+```
+
+
+```{r}
+# Background genes (ALL GENES)
+
+
+# Define the path to the GTF file
+gtf_file <- "Homo_sapiens.GRCh38.104.chr_patch_hapl_scaff.gtf"
+
+# Import the GTF file using rtracklayer
+gtf_data <- import(gtf_file)
+
+# Convert the GTF data to a data frame
+gtf_df <- as.data.frame(gtf_data)
+
+# Extract unique gene names
+gene_info <- gtf_df %>%
+  filter(type == "gene") %>%  
+  select(gene_name = gene_name) %>%
+  distinct()
+
+# Print unique gene names 
+print(gene_info)
+
+```
+```{r}
+# remove any na 
+gene_info <- na.omit(gene_info)
+write.table(gene_info, "ALL_geneNames.txt", row.names = FALSE, col.names = TRUE, quote = FALSE, sep = "\t")
+
+```
+
+
+
+

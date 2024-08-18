@@ -1,0 +1,223 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
+
+Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Ctrl+Shift+Enter*. 
+```{r}
+library(dplyr)
+
+```
+
+```{r}
+# Read the files for unaffected genes
+Unaffected_genesLength_mean <- read.csv("Unaffected_genesLength_mean.csv")
+Unaffected_genes_IntronLength <- read.csv("Unaffected_genes_IntronLength.csv")
+Unaffected_genes_IntronCount <- read.csv("Unaffected_genes_IntronCount.csv")
+Unaffected_genes_ExonLength <- read.csv("Unaffected_genes_ExonLength.csv")
+Unaffected_genes_ExonCount <- read.csv("Unaffected_genes_ExonCount.csv")
+GC_ExonsUnaffected <- read.csv("GC_ExonsUnaffected.csv")
+
+# Print the contents of each data frame
+
+print(Unaffected_genesLength_mean)
+
+print(Unaffected_genes_IntronLength)
+
+print(Unaffected_genes_IntronCount)
+
+print(Unaffected_genes_ExonLength)
+
+print(Unaffected_genes_ExonCount)
+
+print(GC_ExonsUnaffected)
+```
+
+```{r}
+combined_data <- Unaffected_genesLength_mean %>%
+  full_join(Unaffected_genes_IntronLength, by = "gene") %>%
+  full_join(Unaffected_genes_IntronCount, by = "gene") %>%
+  full_join(Unaffected_genes_ExonLength, by = "gene") %>%
+  full_join(Unaffected_genes_ExonCount, by = "gene") %>%
+  full_join(GC_ExonsUnaffected, by = "gene")
+
+# Print the combined data frame
+print(combined_data)
+```
+
+```{r}
+# Some genes don't include the information for introns so we delete them
+# Remove rows where intron information is missing
+cleaned_data <- combined_data %>%
+  na.omit()
+
+cleaned_data <- cleaned_data %>%
+  mutate(state = 0)
+print(cleaned_data)
+
+```
+
+```{r}
+write.csv(cleaned_data, file = "UnaffectedGenes_data.csv", row.names = FALSE)
+
+
+```
+
+
+```{r}
+ito_gene_lengths <- read.table("ito_gene_lengths.csv", header = TRUE, sep = "\t")
+ito_gene_lengths <- ito_gene_lengths %>% select(gene, mean) %>%   rename(GeneLength = mean)
+print(ito_gene_lengths)
+
+```
+
+```{r}
+AU565_gene_lengths <- read.table("AU565_gene_lengths.csv", header = TRUE, sep = "\t")
+AU565_gene_lengths <- AU565_gene_lengths %>% select(gene, mean)  %>% rename(GeneLength = mean)
+print(AU565_gene_lengths)
+```
+```{r}
+MCF10_gene_lengths <- read.table("MCF10_gene_lengths.csv", header = TRUE, sep = "\t")
+MCF10_gene_lengths <- MCF10_gene_lengths %>% select(gene, mean)  %>% rename(GeneLength = mean)
+print(MCF10_gene_lengths)
+```
+
+```{r}
+# Read the files for Ito dataset
+Ito_genesLength_mean <- ito_gene_lengths
+Ito_IntronLength <- read.csv("IntronLength_Ito.csv")
+Ito_IntronCount <- read.csv("IntronCount_Ito.csv")
+Ito_ExonLength <- read.csv("ExonLength_Ito.csv")
+Ito_ExonCount <- read.csv("exons_per_gene_Ito.csv")
+Ito_GC <- read.csv("GC_Ito.csv")
+
+# Print the contents of each data frame
+
+print(Ito_genesLength_mean)
+
+print(Ito_IntronLength)
+
+print(Ito_IntronCount)
+
+print(Ito_ExonLength)
+
+print(Ito_ExonCount)
+
+print(Ito_GC)
+```
+```{r}
+# Combine the data frames
+combined_data <- Ito_genesLength_mean %>%
+  full_join(Ito_IntronLength, by = "gene") %>%
+  full_join(Ito_IntronCount, by = "gene") %>%
+  full_join(Ito_ExonLength, by = "gene") %>%
+  full_join(Ito_ExonCount, by = "gene") %>%
+  full_join(Ito_GC, by = "gene")
+
+# Print combined data to verify
+print(combined_data)
+```
+```{r}
+cleaned_dataIto <- combined_data %>%
+  na.omit()
+
+cleaned_dataIto <- cleaned_dataIto %>%
+  mutate(state = 1)
+print(cleaned_dataIto)
+write.csv(cleaned_dataIto, file = "Ito_data.csv", row.names = FALSE)
+
+```
+
+```{r}
+# Read the files for AU565
+AU565_genesLength_mean <- AU565_gene_lengths
+AU565_IntronLength <- read.csv("IntronLength_AU565.csv")
+AU565_IntronCount <- read.csv("IntronCount_AU565.csv")
+AU565_ExonLength <- read.csv("ExonLength_AU565.csv")
+AU565_ExonCount <- read.csv("exons_per_gene_AU565.csv")
+AU565_GC <- read.csv("GC_AU565.csv")
+
+# Print the contents of each data frame
+
+print(AU565_genesLength_mean)
+
+print(AU565_IntronLength)
+
+print(AU565_IntronCount)
+
+print(AU565_ExonLength)
+
+print(AU565_ExonCount)
+
+print(AU565_GC)
+```
+```{r}
+# Combine the data frames
+combined_data <- AU565_genesLength_mean %>%
+  full_join(AU565_IntronLength, by = "gene") %>%
+  full_join(AU565_IntronCount, by = "gene") %>%
+  full_join(AU565_ExonLength, by = "gene") %>%
+  full_join(AU565_ExonCount, by = "gene") %>%
+  full_join(AU565_GC, by = "gene")
+
+# Print combined data to verify
+print(combined_data)
+```
+```{r}
+cleaned_dataau565 <- combined_data %>%
+  na.omit()
+
+cleaned_dataau565 <- cleaned_dataau565 %>%
+  mutate(state = 1)
+print(cleaned_dataau565)
+write.csv(cleaned_dataau565, file = "AU565_data.csv", row.names = FALSE)
+```
+
+```{r}
+# Read the files for MCF10
+MCF10_genesLength_mean <- MCF10_gene_lengths
+MCF10_IntronLength <- read.csv("IntronLength_MCF10.csv")
+MCF10_IntronCount <- read.csv("IntronCount_MCF10.csv")
+MCF10_ExonLength <- read.csv("ExonLength_MCF10.csv")
+MCF10_ExonCount <- read.csv("exons_per_gene_MCF10.csv")
+MCF10_GC <- read.csv("GC_MCF10.csv")
+
+# Print the contents of each data frame
+
+print(MCF10_genesLength_mean)
+
+print(MCF10_IntronLength)
+
+print(MCF10_IntronCount)
+
+print(MCF10_ExonLength)
+
+print(MCF10_ExonCount)
+
+print(MCF10_GC)
+```
+
+```{r}
+# Combine the data frames
+combined_data <- MCF10_genesLength_mean %>%
+  full_join(MCF10_IntronLength, by = "gene") %>%
+  full_join(MCF10_IntronCount, by = "gene") %>%
+  full_join(MCF10_ExonLength, by = "gene") %>%
+  full_join(MCF10_ExonCount, by = "gene") %>%
+  full_join(MCF10_GC, by = "gene")
+
+# Print combined data to verify
+print(combined_data)
+```
+
+```{r}
+cleaned_dataMCF10 <- combined_data %>%
+  na.omit()
+
+cleaned_dataMCF10 <- cleaned_dataMCF10 %>%
+  mutate(state = 1)
+print(cleaned_dataMCF10)
+write.csv(cleaned_dataMCF10, file = "MCF10_data.csv", row.names = FALSE)
+```

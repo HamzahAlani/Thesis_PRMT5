@@ -1,0 +1,100 @@
+---
+title: "rMAPS_MCF7"
+output: html_notebook
+---
+
+
+
+```{r}
+library(dplyr)
+```
+
+```{r}
+# List of files
+files <- c(
+  "A3SSpVal.dn.vs.bg.RNAmap.txt", "A3SSpVal.up.vs.bg.RNAmap.txt",
+  "A5SSpVal.dn.vs.bg.RNAmap.txt", "A5SSpVal.up.vs.bg.RNAmap.txt",
+  "MXEpVal.dn.vs.bg.RNAmap.txt", "MXEpVal.up.vs.bg.RNAmap.txt",
+  "RIpVal.dn.vs.bg.RNAmap.txt", "RIpVal.up.vs.bg.RNAmap.txt",
+  "SEpVal.dn.vs.bg.RNAmap.txt", "SEpVal.up.vs.bg.RNAmap.txt"
+)
+
+# Function to read the data, apply multiple testing correction, and find the minimum adjusted p-value
+process_file <- function(file) {
+  df <- read.table(file, header = TRUE, sep = "\t")
+  regulation <- ifelse(grepl("up", file), "upregulated", "downregulated")
+  event_type <- sub("pVal.*", "", basename(file))
+  
+  first_col_name <- colnames(df)[1]
+  
+  # Adjust p-values for each numeric column within the file
+  df <- df %>%
+    mutate(across(where(is.numeric), ~ p.adjust(.x, method = "bonferroni"), .names = "adj_{col}")) %>%
+    rowwise() %>%
+    mutate(min_p_adj = min(c_across(starts_with("adj_")))) %>%
+    ungroup() %>%
+    mutate(regulation = regulation, event_type = event_type) %>%
+    select(all_of(first_col_name), regulation, event_type, min_p_adj)
+  
+  return(df)
+}
+
+
+```
+
+```{r}
+# Apply the function to the files
+processed_data <- lapply(files, process_file)
+
+```
+
+
+```{r}
+# Bind the processed data together
+all_data <- bind_rows(processed_data)
+```
+
+```{r}
+# Printing the result
+print(all_data)
+```
+
+
+
+
+
+
+```{r}
+# Sort by adjusted p-value
+significant_motifs_sorted <- all_data %>%
+  arrange(min_p_adj)
+```
+
+```{r}
+print(significant_motifs_sorted)
+```
+
+```{r}
+# Count the number of significant motifs based on adjusted p-value threshold
+significant_count <- sum(significant_motifs_sorted$min_p_adj < 0.05)
+
+# Create a summary dataframe
+summary_df <- data.frame(
+  Total_Motifs = nrow(significant_motifs_sorted),
+  Significant_Motifs = significant_count
+)
+
+print(summary_df)
+```
+```{r}
+significant_motifs <- significant_motifs_sorted %>%
+  filter(min_p_adj < 0.05)
+```
+
+
+```{r}
+write.csv(significant_motifs_sorted, "MCF7_significant_motifs_sorted.csv", row.names = FALSE)
+write.csv(significant_motifs, "MCF7_significant_motifs_only.csv", row.names = FALSE)
+write.csv(summary_df, "MCF7_significant_motifs_analysis_summary.csv", row.names = FALSE)
+```
+

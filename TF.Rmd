@@ -1,0 +1,669 @@
+---
+title: "TF2"
+output: html_notebook
+---
+
+
+```{r}
+# Load necessary libraries
+library(dplyr)
+library(rtracklayer)
+library(msigdbr)
+
+```
+
+
+```{r}
+#AU565
+files <- c("AU565_Alternative_3prime_filtered_yes.tsv",
+           "AU565_Alternative_5prime_filtered_yes.tsv",
+           "AU565_Intron_Retention_filtered_yes.tsv",
+           "AU565_Mutually_Exclusive_Exon_filtered_yes.tsv",
+           "AU565_Skipped_Exon_filtered_yes.tsv")
+
+
+# Function to read and extract columns
+read_data <- function(file) {
+  data <- read.csv(file, sep = "\t")
+  data <- data[, c("geneSymbol", "GeneID")]
+}
+
+rmats_list <- lapply(files, read_data)
+rmats_combined <- bind_rows(rmats_list)
+
+# Remove rows with missing gene symbol 
+rmats_combined <- rmats_combined %>% filter(!is.na(geneSymbol))
+
+# List of significant genes
+significant_genes <- unique(rmats_combined$geneSymbol)
+```
+
+
+
+
+
+
+
+
+```{r}
+# Load the GTF file
+gtf_file <- "Homo_sapiens.GRCh38.104.chr_patch_hapl_scaff.gtf"
+gtf <- import(gtf_file)
+
+# Convert to a data frame
+gtf_df <- as.data.frame(gtf)
+
+# Extract all unique gene names
+all_genes_gtf <- gtf_df %>%
+  filter(type == "gene") %>%
+  select(gene_name) %>%
+  distinct() %>%
+  pull(gene_name)
+```
+
+
+```{r}
+# Identify background genes
+background_genes <- setdiff(all_genes_gtf, significant_genes)
+```
+
+
+
+```{r}
+# Load transcription factor target gene sets from MSigDB
+msigdb_gmt <- gmtPathways("c3.tft.v2023.2.Hs.symbols.gmt")
+
+# PRMT5 gene symbol
+prmt5 <- "PRMT5"
+
+# Initialize a vector to store TFs that have PRMT5 in their gene set
+tf_with_prmt5 <- c()
+
+# Loop through each TF gene set to check if PRMT5 is included
+for (tf_name in names(msigdb_gmt)) {
+  tf_genes <- msigdb_gmt[[tf_name]]
+  if (prmt5 %in% tf_genes) {
+    tf_with_prmt5 <- c(tf_with_prmt5, tf_name)
+  }
+}
+
+# Convert the vector to a data frame 
+tf_with_prmt5_df <- data.frame(TF = tf_with_prmt5)
+
+# Print the TFs that include PRMT5
+print(tf_with_prmt5_df)
+
+# Save the results to a CSV file
+write.csv(tf_with_prmt5_df, "tf_with_prmt5.csv", row.names = FALSE)
+
+# Initialize a dataframe to store results
+results <- data.frame(TF = character(), Statistic = numeric(), p_value = numeric(),tf_genes = numeric(), TF_Target_Sig = numeric(), TF_Target_NonSig = numeric(), Not_TF_Target_Sig = numeric(), Not_TF_Target_NonSig = numeric(), Representation = character(), stringsAsFactors = FALSE)
+
+
+
+for (tf_name in names(msigdb_gmt)) {
+  tf_genes <- msigdb_gmt[[tf_name]]
+  
+  # Identify which significant genes are also TF target genes
+  significant_tf_targets <- significant_genes[significant_genes %in% tf_genes]
+  
+  # Identify which background genes are also TF target genes
+  background_tf_targets <- background_genes[background_genes %in% tf_genes]
+  
+  # Create a contingency table
+  contingency_table <- matrix(c(
+    length(significant_tf_targets),  # Significant genes that are TF targets
+    length(significant_genes) - length(significant_tf_targets),  # Significant genes that are not TF targets
+    length(background_tf_targets),  # Background genes that are TF targets
+    length(background_genes) - length(background_tf_targets)  # Background genes that are not TF targets
+  ), nrow = 2, byrow = TRUE)
+  
+  # Perform the chi-square test
+  test_result <- chisq.test(contingency_table)
+  test_type <- "Chi-square"
+  
+  # Determine overrepresentation or underrepresentation
+
+  
+  sig <- length(significant_tf_targets) / length(tf_genes)
+  bg <- length(background_tf_targets) / length(tf_genes)
+  representation <- ifelse(sig > bg, "Overrepresented", "Underrepresented")
+  
+  # Store the result
+  results <- rbind(results, data.frame(TF = tf_name,  Statistic = test_result$statistic, p_value = test_result$p.value,tf_genes = length(tf_genes),
+                                       TF_Target_Sig = contingency_table[1, 1], TF_Target_NonSig = contingency_table[2, 1],
+                                       Not_TF_Target_Sig = contingency_table[1, 2], Not_TF_Target_NonSig = contingency_table[2, 2],
+                                       Representation = representation))
+}
+
+# Adjust p-values for multiple testing
+results$p_value_adjusted <- p.adjust(results$p_value, method = "bonferroni")
+
+# Select only rows with significant adjusted p-values
+significant_results <- results %>% filter(p_value_adjusted < 0.01)
+
+# Order by adjusted p-value
+ordered_significant_results <- significant_results %>% arrange(p_value_adjusted)
+
+# Filter for only "Overrepresented" rows
+
+overrepresented_results <- ordered_significant_results %>% filter(Representation == "Overrepresented")
+
+# Save the ordered significant results as a CSV file
+write.csv(overrepresented_results, "AU565_Overrepresented_tf_results.csv", row.names = FALSE)
+
+# Print the ordered significant results
+print(ordered_significant_results)
+
+
+# Filter significant results to include only TFs that have PRMT5 in their gene sets
+
+tf_with_prmt5_df <- read.csv("tf_with_prmt5.csv")
+
+
+prmt5_significant_results <- significant_results %>% filter(TF %in% tf_with_prmt5_df$TF)
+
+# Save the filtered results as a CSV file
+write.csv(prmt5_significant_results, "AU565_PRMT5_tf_results.csv", row.names = FALSE)
+
+# Save all significant results
+write.csv(ordered_significant_results, "AU565_tf_results.csv", row.names = FALSE)
+
+
+```
+
+```{r}
+#BULK_MCF
+files <- c("BULK_MCF_Alternative_3prime_filtered_yes.tsv",
+           "BULK_MCF_Alternative_5prime_filtered_yes.tsv",
+           "BULK_MCF_Intron_Retention_filtered_yes.tsv",
+           "BULK_MCF_Mutually_Exclusive_Exon_filtered_yes.tsv",
+           "BULK_MCF_Skipped_Exon_filtered_yes.tsv")
+
+
+# Function to read and extract columns
+read_data <- function(file) {
+  data <- read.csv(file, sep = "\t")
+  data <- data[, c("geneSymbol", "GeneID")]
+}
+
+rmats_list <- lapply(files, read_data)
+rmats_combined <- bind_rows(rmats_list)
+
+# Remove rows with missing gene symbol 
+rmats_combined <- rmats_combined %>% filter(!is.na(geneSymbol))
+
+# List of significant genes
+significant_genes <- unique(rmats_combined$geneSymbol)
+```
+
+
+
+```{r}
+# Identify background genes
+background_genes <- setdiff(all_genes_gtf, significant_genes)
+```
+
+
+
+```{r}
+# Load transcription factor target gene sets from MSigDB
+msigdb_gmt <- gmtPathways("c3.tft.v2023.2.Hs.symbols.gmt")
+
+# Initialize a dataframe to store results
+results <- data.frame(TF = character(), Statistic = numeric(), p_value = numeric(),tf_genes = numeric(), TF_Target_Sig = numeric(), TF_Target_NonSig = numeric(), Not_TF_Target_Sig = numeric(), Not_TF_Target_NonSig = numeric(), Representation = character(), stringsAsFactors = FALSE)
+
+
+
+for (tf_name in names(msigdb_gmt)) {
+  tf_genes <- msigdb_gmt[[tf_name]]
+  
+  # Identify which significant genes are also TF target genes
+  significant_tf_targets <- significant_genes[significant_genes %in% tf_genes]
+  
+  # Identify which background genes are also TF target genes
+  background_tf_targets <- background_genes[background_genes %in% tf_genes]
+  
+  # Create a contingency table
+  contingency_table <- matrix(c(
+    length(significant_tf_targets),  # Significant genes that are TF targets
+    length(significant_genes) - length(significant_tf_targets),  # Significant genes that are not TF targets
+    length(background_tf_targets),  # Background genes that are TF targets
+    length(background_genes) - length(background_tf_targets)  # Background genes that are not TF targets
+  ), nrow = 2, byrow = TRUE)
+  
+  # Perform the chi-square test
+  test_result <- chisq.test(contingency_table)
+  test_type <- "Chi-square"
+  
+  # Determine overrepresentation or underrepresentation
+
+  
+  sig <- length(significant_tf_targets) / length(tf_genes)
+  bg <- length(background_tf_targets) / length(tf_genes)
+  representation <- ifelse(sig > bg, "Overrepresented", "Underrepresented")
+  
+  # Store the result
+  results <- rbind(results, data.frame(TF = tf_name,  Statistic = test_result$statistic, p_value = test_result$p.value,tf_genes = length(tf_genes),
+                                       TF_Target_Sig = contingency_table[1, 1], TF_Target_NonSig = contingency_table[2, 1],
+                                       Not_TF_Target_Sig = contingency_table[1, 2], Not_TF_Target_NonSig = contingency_table[2, 2],
+                                       Representation = representation))
+}
+
+# Adjust p-values for multiple testing
+results$p_value_adjusted <- p.adjust(results$p_value, method = "bonferroni")
+
+# Select only rows with significant adjusted p-values
+significant_results <- results %>% filter(p_value_adjusted < 0.01)
+
+# Order by adjusted p-value
+ordered_significant_results <- significant_results %>% arrange(p_value_adjusted)
+# Filter for only "Overrepresented" rows
+
+overrepresented_results <- ordered_significant_results %>% filter(Representation == "Overrepresented")
+
+# Save the ordered significant results as a CSV file
+write.csv(overrepresented_results, "BULK_Overrepresented_tf_results.csv", row.names = FALSE)
+
+# Print the ordered significant results
+print(ordered_significant_results)
+
+# Filter significant results to include only TFs that have PRMT5 in their gene sets
+prmt5_significant_results <- significant_results %>% filter(TF %in% tf_with_prmt5_df$TF)
+
+# Save the filtered results as a CSV file
+write.csv(prmt5_significant_results, "BULK_PRMT5_tf_results.csv", row.names = FALSE)
+# Save all significant results
+write.csv(ordered_significant_results, "BULK_tf_results.csv", row.names = FALSE)
+
+```
+```{r}
+#MCF7
+files <- c("MCF7_Alternative_3prime_filtered_yes.tsv",
+           "MCF7_Alternative_5prime_filtered_yes.tsv",
+           "MCF7_Intron_Retention_filtered_yes.tsv",
+           "MCF7_Mutually_Exclusive_Exon_filtered_yes.tsv",
+           "MCF7_Skipped_Exon_filtered_yes.tsv")
+
+
+# Function to read and extract columns
+read_data <- function(file) {
+  data <- read.csv(file, sep = "\t")
+  data <- data[, c("geneSymbol", "GeneID")]
+}
+
+rmats_list <- lapply(files, read_data)
+rmats_combined <- bind_rows(rmats_list)
+
+# Remove rows with missing gene symbol 
+rmats_combined <- rmats_combined %>% filter(!is.na(geneSymbol))
+
+# List of significant genes
+significant_genes <- unique(rmats_combined$geneSymbol)
+```
+
+
+
+```{r}
+# Identify background genes
+background_genes <- setdiff(all_genes_gtf, significant_genes)
+```
+
+
+
+```{r}
+# Load transcription factor target gene sets from MSigDB
+msigdb_gmt <- gmtPathways("c3.tft.v2023.2.Hs.symbols.gmt")
+
+# Initialize a dataframe to store results
+results <- data.frame(TF = character(), Statistic = numeric(), p_value = numeric(),tf_genes = numeric(), TF_Target_Sig = numeric(), TF_Target_NonSig = numeric(), Not_TF_Target_Sig = numeric(), Not_TF_Target_NonSig = numeric(), Representation = character(), stringsAsFactors = FALSE)
+
+
+
+for (tf_name in names(msigdb_gmt)) {
+  tf_genes <- msigdb_gmt[[tf_name]]
+  
+  # Identify which significant genes are also TF target genes
+  significant_tf_targets <- significant_genes[significant_genes %in% tf_genes]
+  
+  # Identify which background genes are also TF target genes
+  background_tf_targets <- background_genes[background_genes %in% tf_genes]
+  
+  # Create a contingency table
+  contingency_table <- matrix(c(
+    length(significant_tf_targets),  # Significant genes that are TF targets
+    length(significant_genes) - length(significant_tf_targets),  # Significant genes that are not TF targets
+    length(background_tf_targets),  # Background genes that are TF targets
+    length(background_genes) - length(background_tf_targets)  # Background genes that are not TF targets
+  ), nrow = 2, byrow = TRUE)
+  
+  # Perform the chi-square test
+  test_result <- chisq.test(contingency_table)
+  test_type <- "Chi-square"
+  
+  # Determine overrepresentation or underrepresentation
+
+  
+  sig <- length(significant_tf_targets) / length(tf_genes)
+  bg <- length(background_tf_targets) / length(tf_genes)
+  representation <- ifelse(sig > bg, "Overrepresented", "Underrepresented")
+  
+  # Store the result
+  results <- rbind(results, data.frame(TF = tf_name,  Statistic = test_result$statistic, p_value = test_result$p.value,tf_genes = length(tf_genes),
+                                       TF_Target_Sig = contingency_table[1, 1], TF_Target_NonSig = contingency_table[2, 1],
+                                       Not_TF_Target_Sig = contingency_table[1, 2], Not_TF_Target_NonSig = contingency_table[2, 2],
+                                       Representation = representation))
+}
+
+# Adjust p-values for multiple testing
+results$p_value_adjusted <- p.adjust(results$p_value, method = "bonferroni")
+
+# Select only rows with significant adjusted p-values
+significant_results <- results %>% filter(p_value_adjusted < 0.01)
+
+# Order by adjusted p-value
+ordered_significant_results <- significant_results %>% arrange(p_value_adjusted)
+# Filter for only "Overrepresented" rows
+
+overrepresented_results <- ordered_significant_results %>% filter(Representation == "Overrepresented")
+
+# Save the ordered significant results as a CSV file
+write.csv(overrepresented_results, "MCF7_Overrepresented_tf_results.csv", row.names = FALSE)
+
+# Print the ordered significant results
+print(ordered_significant_results)
+
+# Filter significant results to include only TFs that have PRMT5 in their gene sets
+prmt5_significant_results <- significant_results %>% filter(TF %in% tf_with_prmt5_df$TF)
+
+# Save the filtered results as a CSV file
+write.csv(prmt5_significant_results, "MCF7_PRMT5_tf_results.csv", row.names = FALSE)
+
+# Save all significant results
+write.csv(ordered_significant_results, "MCF7_tf_results.csv", row.names = FALSE)
+
+```
+
+```{r}
+#MCF10
+files <- c("MCF10_Alternative_3prime_filtered_yes.tsv",
+           "MCF10_Alternative_5prime_filtered_yes.tsv",
+           "MCF10_Intron_Retention_filtered_yes.tsv",
+           "MCF10_Mutually_Exclusive_Exon_filtered_yes.tsv",
+           "MCF10_Skipped_Exon_filtered_yes.tsv")
+
+
+# Function to read and extract columns
+read_data <- function(file) {
+  data <- read.csv(file, sep = "\t")
+  data <- data[, c("geneSymbol", "GeneID")]
+}
+
+rmats_list <- lapply(files, read_data)
+rmats_combined <- bind_rows(rmats_list)
+
+# Remove rows with missing gene symbol 
+rmats_combined <- rmats_combined %>% filter(!is.na(geneSymbol))
+
+# List of significant genes
+significant_genes <- unique(rmats_combined$geneSymbol)
+```
+
+
+
+```{r}
+# Identify background genes
+background_genes <- setdiff(all_genes_gtf, significant_genes)
+```
+
+
+
+```{r}
+# Load transcription factor target gene sets from MSigDB
+msigdb_gmt <- gmtPathways("c3.tft.v2023.2.Hs.symbols.gmt")
+
+# Initialize a dataframe to store results
+results <- data.frame(TF = character(), Statistic = numeric(), p_value = numeric(),tf_genes = numeric(), TF_Target_Sig = numeric(), TF_Target_NonSig = numeric(), Not_TF_Target_Sig = numeric(), Not_TF_Target_NonSig = numeric(), Representation = character(), stringsAsFactors = FALSE)
+
+
+
+for (tf_name in names(msigdb_gmt)) {
+  tf_genes <- msigdb_gmt[[tf_name]]
+  
+  # Identify which significant genes are also TF target genes
+  significant_tf_targets <- significant_genes[significant_genes %in% tf_genes]
+  
+  # Identify which background genes are also TF target genes
+  background_tf_targets <- background_genes[background_genes %in% tf_genes]
+  
+  # Create a contingency table
+  contingency_table <- matrix(c(
+    length(significant_tf_targets),  # Significant genes that are TF targets
+    length(significant_genes) - length(significant_tf_targets),  # Significant genes that are not TF targets
+    length(background_tf_targets),  # Background genes that are TF targets
+    length(background_genes) - length(background_tf_targets)  # Background genes that are not TF targets
+  ), nrow = 2, byrow = TRUE)
+  
+  # Perform the chi-square test
+  test_result <- chisq.test(contingency_table)
+  test_type <- "Chi-square"
+  
+  # Determine overrepresentation or underrepresentation
+
+  
+  sig <- length(significant_tf_targets) / length(tf_genes)
+  bg <- length(background_tf_targets) / length(tf_genes)
+  representation <- ifelse(sig > bg, "Overrepresented", "Underrepresented")
+  
+  # Store the result
+  results <- rbind(results, data.frame(TF = tf_name,  Statistic = test_result$statistic, p_value = test_result$p.value,tf_genes = length(tf_genes),
+                                       TF_Target_Sig = contingency_table[1, 1], TF_Target_NonSig = contingency_table[2, 1],
+                                       Not_TF_Target_Sig = contingency_table[1, 2], Not_TF_Target_NonSig = contingency_table[2, 2],
+                                       Representation = representation))
+}
+
+# Adjust p-values for multiple testing
+results$p_value_adjusted <- p.adjust(results$p_value, method = "bonferroni")
+
+# Select only rows with significant adjusted p-values
+significant_results <- results %>% filter(p_value_adjusted < 0.01)
+
+# Order by adjusted p-value
+ordered_significant_results <- significant_results %>% arrange(p_value_adjusted)
+# Filter for only "Overrepresented" rows
+
+overrepresented_results <- ordered_significant_results %>% filter(Representation == "Overrepresented")
+
+# Save the ordered significant results as a CSV file
+write.csv(overrepresented_results, "MCF10_Overrepresented_tf_results.csv", row.names = FALSE)
+
+# Print the ordered significant results
+print(ordered_significant_results)
+
+
+# Filter significant results to include only TFs that have PRMT5 in their gene sets
+prmt5_significant_results <- significant_results %>% filter(TF %in% tf_with_prmt5_df$TF)
+
+# Save the filtered results as a CSV file
+write.csv(prmt5_significant_results, "MCF10_PRMT5_tf_results.csv", row.names = FALSE)
+
+# Save all significant results
+write.csv(ordered_significant_results, "MCF10_tf_results.csv", row.names = FALSE)
+
+```
+```{r}
+#Ito
+files <- c("ItoAlternative_3prime_filtered_yes.tsv",
+           "ItoAlternative_5prime_filtered_yes.tsv",
+           "ItoIntron_Retention_filtered_yes.tsv",
+           "ItoMutually_Exclusive_Exon_filtered_yes.tsv",
+           "ItoSkipped_Exon_filtered_yes.tsv")
+
+
+# Function to read and extract columns
+read_data <- function(file) {
+  data <- read.csv(file, sep = "\t")
+  data <- data[, c("geneSymbol", "GeneID")]
+}
+
+rmats_list <- lapply(files, read_data)
+rmats_combined <- bind_rows(rmats_list)
+
+# Remove rows with missing gene symbol 
+rmats_combined <- rmats_combined %>% filter(!is.na(geneSymbol))
+
+# List of significant genes
+significant_genes <- unique(rmats_combined$geneSymbol)
+```
+
+
+
+```{r}
+# Identify background genes
+background_genes <- setdiff(all_genes_gtf, significant_genes)
+```
+
+
+
+```{r}
+# Load transcription factor target gene sets from MSigDB
+msigdb_gmt <- gmtPathways("c3.tft.v2023.2.Hs.symbols.gmt")
+
+
+
+
+# Initialize a dataframe to store results
+results <- data.frame(TF = character(), Statistic = numeric(), p_value = numeric(),tf_genes = numeric(), TF_Target_Sig = numeric(), TF_Target_NonSig = numeric(), Not_TF_Target_Sig = numeric(), Not_TF_Target_NonSig = numeric(), Representation = character(), stringsAsFactors = FALSE)
+
+
+
+for (tf_name in names(msigdb_gmt)) {
+  tf_genes <- msigdb_gmt[[tf_name]]
+  
+  # Identify which significant genes are also TF target genes
+  significant_tf_targets <- significant_genes[significant_genes %in% tf_genes]
+  
+  # Identify which background genes are also TF target genes
+  background_tf_targets <- background_genes[background_genes %in% tf_genes]
+  
+  # Create a contingency table
+  contingency_table <- matrix(c(
+    length(significant_tf_targets),  # Significant genes that are TF targets
+    length(significant_genes) - length(significant_tf_targets),  # Significant genes that are not TF targets
+    length(background_tf_targets),  # Background genes that are TF targets
+    length(background_genes) - length(background_tf_targets)  # Background genes that are not TF targets
+  ), nrow = 2, byrow = TRUE)
+  
+  # Perform the chi-square test
+  test_result <- chisq.test(contingency_table)
+  test_type <- "Chi-square"
+  
+  # Determine overrepresentation or underrepresentation
+
+  
+  sig <- length(significant_tf_targets) / length(tf_genes)
+  bg <- length(background_tf_targets) / length(tf_genes)
+  representation <- ifelse(sig > bg, "Overrepresented", "Underrepresented")
+  
+  # Store the result
+  results <- rbind(results, data.frame(TF = tf_name,  Statistic = test_result$statistic, p_value = test_result$p.value,tf_genes = length(tf_genes),
+                                       TF_Target_Sig = contingency_table[1, 1], TF_Target_NonSig = contingency_table[2, 1],
+                                       Not_TF_Target_Sig = contingency_table[1, 2], Not_TF_Target_NonSig = contingency_table[2, 2],
+                                       Representation = representation))
+}
+
+# Adjust p-values for multiple testing
+results$p_value_adjusted <- p.adjust(results$p_value, method = "bonferroni")
+
+# Select only rows with significant adjusted p-values
+significant_results <- results %>% filter(p_value_adjusted < 0.01)
+
+# Order by adjusted p-value
+ordered_significant_results <- significant_results %>% arrange(p_value_adjusted)
+# Filter for only "Overrepresented" rows
+
+overrepresented_results <- ordered_significant_results %>% filter(Representation == "Overrepresented")
+
+# Save the ordered significant results as a CSV file
+write.csv(overrepresented_results, "Ito_Overrepresented_tf_results.csv", row.names = FALSE)
+
+# Print the ordered significant results
+print(ordered_significant_results)
+
+
+# Filter significant results to include only TFs that have PRMT5 in their gene sets
+prmt5_significant_results <- significant_results %>% filter(TF %in% tf_with_prmt5_df$TF)
+
+# Save the filtered results as a CSV file
+write.csv(prmt5_significant_results, "Ito_PRMT5_tf_results.csv", row.names = FALSE)
+# Save all significant results
+write.csv(ordered_significant_results, "Ito_tf_results.csv", row.names = FALSE)
+
+```
+
+```{r}
+# combine the results of overrepresented from the 5 datasets
+# Read and label each CSV file
+au565 <- read.csv("AU565_Overrepresented_tf_results.csv")
+au565$Source <- "AU565"
+
+#bulk_mcf has no overrepresented results
+#bulk_mcf <- read.csv("BULK_Overrepresented_tf_results.csv")
+#bulk_mcf$Source <- "BULK_MCF"
+
+# Ito has no overrepresented results
+#ito <- read.csv("Ito_Overrepresented_tf_results.csv")
+#ito$Source <- "Ito"
+
+mcf7 <- read.csv("MCF7_Overrepresented_tf_results.csv")
+mcf7$Source <- "MCF7"
+
+mcf10 <- read.csv("MCF10_Overrepresented_tf_results.csv")
+mcf10$Source <- "MCF10"
+
+# Combine all dataframes
+combined_data <- bind_rows(au565,  mcf7, mcf10)
+
+# Save the combined dataframe as a new CSV file
+write.csv(combined_data, "tf_results_Overrepresented.csv", row.names = FALSE)
+
+# Print the combined dataframe
+print(combined_data)
+```
+
+
+```{r}
+# Combine the results of TF gene sets with PRMT5 from the 5 dataset 
+au565 <- read.csv("AU565_PRMT5_tf_results.csv")
+au565$Source <- "AU565"
+
+
+bulk_mcf <- read.csv("BULK_PRMT5_tf_results.csv")
+bulk_mcf$Source <- "BULK_MCF"
+
+
+ito <- read.csv("Ito_PRMT5_tf_results.csv")
+ito$Source <- "Ito"
+
+mcf7 <- read.csv("MCF7_PRMT5_tf_results.csv")
+mcf7$Source <- "MCF7"
+
+mcf10 <- read.csv("MCF10_PRMT5_tf_results.csv")
+mcf10$Source <- "MCF10"
+
+# Combine all dataframes
+combined_data <- bind_rows(au565, ito, bulk_mcf,  mcf7, mcf10)
+
+# Save the combined dataframe as a new CSV file
+write.csv(combined_data, "Combined_tf_results_PRMT5.csv", row.names = FALSE)
+
+# Print the combined dataframe
+print(combined_data)
+```
+
+```{r}
+# Filter the data to include only the TFs that include PRMT5
+PRMT5_only <- combined_data %>% filter(Representation == "Overrepresented")
+print(PRMT5_only)
+```
+

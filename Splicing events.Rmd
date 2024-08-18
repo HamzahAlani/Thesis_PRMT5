@@ -1,0 +1,552 @@
+---
+title: "Splicing events"
+output: html_notebook
+---
+
+
+```{r}
+# Load necessary library
+
+
+library(ggridges)
+library(ggridges)
+library(effsize)
+library(dplyr)
+library(ggplot2)
+library(car)
+library(tidyverse)
+library(DescTools)
+
+
+```
+
+```{r}
+# Function to extract unique genes and save to file
+extract_and_save_genes <- function(input_file, output_file) {
+  # Read the CSV file
+  data <- read.csv(input_file, sep = "\t")
+  
+  # Extract unique genes
+  unique_genes <- unique(data$GeneID)
+  
+  # Save the unique genes to a text file
+  write(unique_genes, file = output_file)
+}
+
+# Apply the function to each file
+extract_and_save_genes("combined_tidy_SkippedExon.tsv", "SkippedExon_Genes.txt")
+extract_and_save_genes("combined_tidy_Mutually_ExclusiveExon.tsv", "MutuallyExclusive_Genes.txt")
+extract_and_save_genes("combined_tidy_intron_Retention.tsv", "IntronRetention_Genes.txt")
+extract_and_save_genes("combined_tidy_3_5_prime.tsv", "3_5_PrimeGenes.txt")
+```
+
+```{r}
+# Function to filter exons.bed data based on genes from a file and save to new BED file
+filter_and_save_exons <- function(genes_file, exons_bed_file, output_file) {
+  # Read the genes from the text file
+  genes <- readLines(genes_file)
+  
+  # Read the exons.bed file into a data frame
+  exons <- read.table(exons_bed_file, header = FALSE, sep = "\t", stringsAsFactors = FALSE)
+  
+  # Assign column names to the exons data frame
+  colnames(exons) <- c("chrom", "chromStart", "chromEnd", "strand", "transcriptID", "geneID", "exonLength")
+  
+  # Filter the exons data to include only the genes from the genes file
+  filtered_exons <- exons %>% filter(geneID %in% genes)
+  
+  # Save the filtered exons data to a new BED file
+  write.table(filtered_exons, file = output_file, sep = "\t", row.names = FALSE, col.names = FALSE, quote = FALSE)
+}
+
+# File path for the exons.bed file
+exons_bed_file <- "exons.bed"
+
+# Apply the function to each set of genes and save the filtered exons data
+filter_and_save_exons("SkippedExon_Genes.txt", exons_bed_file, "SkippedExon_exons.bed")
+filter_and_save_exons("MutuallyExclusive_Genes.txt", exons_bed_file, "MutuallyExclusive_exons.bed")
+filter_and_save_exons("IntronRetention_Genes.txt", exons_bed_file, "IntronRetention_exons.bed")
+filter_and_save_exons("3_5_PrimeGenes.txt", exons_bed_file, "3_5_Prime_exons.bed")
+```
+
+```{r}
+# Function to read and print the filtered exons files
+read_and_assign_exons <- function(exons_file) {
+  # Read the filtered exons file into a data frame
+  filtered_exons <- read.table(exons_file, header = FALSE, sep = "\t", stringsAsFactors = FALSE)
+  
+  # Assign column names to the filtered exons data frame
+  colnames(filtered_exons) <- c("chrom", "chromStart", "chromEnd", "strand", "transcriptID", "geneID", "exonLength")
+  
+  # Return the filtered exons data frame
+  return(filtered_exons)
+}
+
+# Read each filtered exons file into separate variables
+SkippedExon_exons <- read_and_assign_exons("SkippedExon_exons.bed")
+MutuallyExclusive_exons <- read_and_assign_exons("MutuallyExclusive_exons.bed")
+IntronRetention_exons <- read_and_assign_exons("IntronRetention_exons.bed")
+Prime3_5_exons <- read_and_assign_exons("3_5_Prime_exons.bed")
+
+# Print each filtered exons data frame
+print(SkippedExon_exons)
+print(MutuallyExclusive_exons)
+print(IntronRetention_exons)
+print(Prime3_5_exons)
+```
+
+```{r}
+# Function to read, deduplicate based on chromStart and chromEnd, and return the filtered exons data frame
+read_and_deduplicate_exons <- function(exons_file) {
+  # Read the filtered exons file into a data frame
+  filtered_exons <- read.table(exons_file, header = FALSE, sep = "\t", stringsAsFactors = FALSE)
+  
+  # Assign column names to the filtered exons data frame
+  colnames(filtered_exons) <- c("chrom", "chromStart", "chromEnd", "strand", "transcriptID", "geneID", "exonLength")
+  
+  # Remove duplicates based on chromStart and chromEnd
+  deduplicated_exons <- filtered_exons[!duplicated(filtered_exons[, c("chromStart", "chromEnd")]), ]
+  
+  # Return the deduplicated exons data frame
+  return(deduplicated_exons)
+}
+
+# Read, deduplicate, and assign each filtered exons file to separate variables
+deduplicated_SkippedExon_exons <- read_and_deduplicate_exons("SkippedExon_exons.bed")
+deduplicated_MutuallyExclusive_exons <- read_and_deduplicate_exons("MutuallyExclusive_exons.bed")
+deduplicated_IntronRetention_exons <- read_and_deduplicate_exons("IntronRetention_exons.bed")
+deduplicated_Prime3_5_exons <- read_and_deduplicate_exons("3_5_Prime_exons.bed")
+
+# Print each deduplicated exons data frame
+print(deduplicated_SkippedExon_exons)
+print(deduplicated_MutuallyExclusive_exons)
+print(deduplicated_IntronRetention_exons)
+print(deduplicated_Prime3_5_exons)
+```
+```{r}
+# Function to count exons per gene
+count_exons_per_gene <- function(deduplicated_exons_df) {
+  exons_per_gene <- deduplicated_exons_df %>%
+    group_by(geneID) %>%
+    summarize(exonCount = n())
+  return(exons_per_gene)
+}
+
+# Count exons per gene for each deduplicated file
+exons_per_gene_SkippedExon <- count_exons_per_gene(deduplicated_SkippedExon_exons)
+exons_per_gene_MutuallyExclusive <- count_exons_per_gene(deduplicated_MutuallyExclusive_exons)
+exons_per_gene_IntronRetention <- count_exons_per_gene(deduplicated_IntronRetention_exons)
+exons_per_gene_Prime3_5 <- count_exons_per_gene(deduplicated_Prime3_5_exons)
+```
+
+```{r}
+# Combine the exon counts per gene into a single data frame
+exons_per_gene_combined <- bind_rows(
+  exons_per_gene_SkippedExon %>% mutate(group = "SkippedExon"),
+  exons_per_gene_MutuallyExclusive %>% mutate(group = "MutuallyExclusive"),
+  exons_per_gene_IntronRetention %>% mutate(group = "IntronRetention"),
+  exons_per_gene_Prime3_5 %>% mutate(group = "Prime3_5")
+)
+
+# Perform ANOVA for exon count per gene
+anova_exon_count <- aov(exonCount ~ group, data = exons_per_gene_combined)
+summary(anova_exon_count)
+
+# Perform effect size test for exon count per gene
+EtaSq(anova_exon_count)
+
+```
+
+```{r}
+# Combine the exon lengths into a single data frame
+exon_lengths_combined <- bind_rows(
+  deduplicated_SkippedExon_exons %>% mutate(group = "SkippedExon"),
+  deduplicated_MutuallyExclusive_exons %>% mutate(group = "MutuallyExclusive"),
+  deduplicated_IntronRetention_exons %>% mutate(group = "IntronRetention"),
+  deduplicated_Prime3_5_exons %>% mutate(group = "Prime3_5")
+)
+
+# Perform ANOVA for exon length
+anova_exon_length <- aov(exonLength ~ group, data = exon_lengths_combined)
+summary(anova_exon_length)
+
+# Perform effect size test for exon length
+EtaSq(anova_exon_length)
+```
+
+```{r}
+# Get summary statistics for exon counts per gene
+exon_count_summary_SkippedExon <- summary(exons_per_gene_SkippedExon$exonCount)
+exon_count_summary_MutuallyExclusive <- summary(exons_per_gene_MutuallyExclusive$exonCount)
+exon_count_summary_IntronRetention <- summary(exons_per_gene_IntronRetention$exonCount)
+exon_count_summary_Prime3_5 <- summary(exons_per_gene_Prime3_5$exonCount)
+
+
+# Get summary statistics for exon lengths
+exon_length_summary_SkippedExon <- summary(deduplicated_SkippedExon_exons$exonLength)
+exon_length_summary_MutuallyExclusive <- summary(deduplicated_MutuallyExclusive_exons$exonLength)
+exon_length_summary_IntronRetention <- summary(deduplicated_IntronRetention_exons$exonLength)
+exon_length_summary_Prime3_5 <- summary(deduplicated_Prime3_5_exons$exonLength)
+
+
+```
+
+```{r}
+# Print the summaries for exon lengths
+print(exon_length_summary_SkippedExon)
+
+print(exon_length_summary_MutuallyExclusive)
+
+print(exon_length_summary_IntronRetention)
+
+print(exon_length_summary_Prime3_5)
+```
+
+```{r}
+# Print the summaries for exon counts per gene
+print(exon_count_summary_SkippedExon)
+
+print(exon_count_summary_MutuallyExclusive)
+
+print(exon_count_summary_IntronRetention)
+
+print(exon_count_summary_Prime3_5)
+```
+```{r}
+# The same process is done for introns
+# Function to filter introns.bed data based on genes from a file and save to new BED file
+filter_and_save_introns <- function(genes_file, introns_bed_file, output_file) {
+  # Read the genes from the text file
+  genes <- readLines(genes_file)
+  
+  # Read the introns.bed file into a data frame
+  introns <- read.table(introns_bed_file, header = FALSE, sep = "\t", stringsAsFactors = FALSE)
+  
+  # Assign column names to the introns data frame
+  colnames(introns) <- c("chrom", "chromStart", "chromEnd", "strand", "transcriptID", "geneID", "intronLength")
+  
+  # Filter the introns data to include only the genes from the genes file
+  filtered_introns <- introns %>% filter(geneID %in% genes)
+  
+  # Save the filtered introns data to a new BED file
+  write.table(filtered_introns, file = output_file, sep = "\t", row.names = FALSE, col.names = FALSE, quote = FALSE)
+}
+
+# File path for the introns.bed file
+introns_bed_file <- "introns.bed"
+
+# Apply the function to each set of genes and save the filtered introns data
+filter_and_save_introns("SkippedExon_Genes.txt", introns_bed_file, "SkippedExon_introns.bed")
+filter_and_save_introns("MutuallyExclusive_Genes.txt", introns_bed_file, "MutuallyExclusive_introns.bed")
+filter_and_save_introns("IntronRetention_Genes.txt", introns_bed_file, "IntronRetention_introns.bed")
+filter_and_save_introns("3_5_PrimeGenes.txt", introns_bed_file, "3_5_Prime_introns.bed")
+```
+
+```{r}
+read_and_deduplicate_introns <- function(introns_file) {
+  # Read the filtered introns file into a data frame
+  filtered_introns <- read.table(introns_file, header = FALSE, sep = "\t", stringsAsFactors = FALSE)
+  
+  # Assign column names to the filtered introns data frame
+  colnames(filtered_introns) <- c("chrom", "chromStart", "chromEnd", "strand", "transcriptID", "geneID", "intronLength")
+  
+  # Remove duplicates based on chromStart and chromEnd
+  deduplicated_introns <- filtered_introns[!duplicated(filtered_introns[, c("chromStart", "chromEnd")]), ]
+  
+  # Return the deduplicated introns data frame
+  return(deduplicated_introns)
+}
+
+# Read, deduplicate, and assign each filtered introns file to separate variables
+deduplicated_SkippedExon_introns <- read_and_deduplicate_introns("SkippedExon_introns.bed")
+
+deduplicated_MutuallyExclusive_introns <- read_and_deduplicate_introns("MutuallyExclusive_introns.bed")
+
+deduplicated_IntronRetention_introns <- read_and_deduplicate_introns("IntronRetention_introns.bed")
+
+deduplicated_Prime3_5_introns <- read_and_deduplicate_introns("3_5_Prime_introns.bed")
+
+# Print each deduplicated introns data frame
+
+print(deduplicated_SkippedExon_introns)
+
+
+print(deduplicated_MutuallyExclusive_introns)
+
+
+print(deduplicated_IntronRetention_introns)
+
+
+print(deduplicated_Prime3_5_introns)
+```
+```{r}
+# Function to count introns per gene
+count_introns_per_gene <- function(deduplicated_introns_df) {
+  introns_per_gene <- deduplicated_introns_df %>%
+    group_by(geneID) %>%
+    summarize(intronCount = n())
+  return(introns_per_gene)
+}
+
+# Count introns per gene for each deduplicated file
+introns_per_gene_SkippedExon <- count_introns_per_gene(deduplicated_SkippedExon_introns)
+
+introns_per_gene_MutuallyExclusive <- count_introns_per_gene(deduplicated_MutuallyExclusive_introns)
+
+introns_per_gene_IntronRetention <- count_introns_per_gene(deduplicated_IntronRetention_introns)
+
+introns_per_gene_Prime3_5 <- count_introns_per_gene(deduplicated_Prime3_5_introns)
+
+
+```
+
+```{r}
+# Get summary statistics for intron lengths
+intron_length_summary_SkippedExon <- summary(deduplicated_SkippedExon_introns$intronLength)
+
+intron_length_summary_MutuallyExclusive <- summary(deduplicated_MutuallyExclusive_introns$intronLength)
+
+intron_length_summary_IntronRetention <- summary(deduplicated_IntronRetention_introns$intronLength)
+
+intron_length_summary_Prime3_5 <- summary(deduplicated_Prime3_5_introns$intronLength)
+
+# Print the summaries for intron lengths
+print(intron_length_summary_SkippedExon)
+
+print(intron_length_summary_MutuallyExclusive)
+
+print(intron_length_summary_IntronRetention)
+
+print(intron_length_summary_Prime3_5)
+```
+```{r}
+# Get summary statistics for intron counts per gene
+intron_count_summary_SkippedExon <- summary(introns_per_gene_SkippedExon$intronCount)
+
+intron_count_summary_MutuallyExclusive <- summary(introns_per_gene_MutuallyExclusive$intronCount)
+
+intron_count_summary_IntronRetention <- summary(introns_per_gene_IntronRetention$intronCount)
+
+intron_count_summary_Prime3_5 <- summary(introns_per_gene_Prime3_5$intronCount)
+
+
+# Print the summaries for intron counts per gene
+print("Summary for intron counts per gene (SkippedExon):")
+print(intron_count_summary_SkippedExon)
+
+print("Summary for intron counts per gene (MutuallyExclusive):")
+print(intron_count_summary_MutuallyExclusive)
+
+print("Summary for intron counts per gene (IntronRetention):")
+print(intron_count_summary_IntronRetention)
+
+print("Summary for intron counts per gene (Prime3_5):")
+print(intron_count_summary_Prime3_5)
+```
+
+```{r}
+# Combine the intron counts per gene into a single data frame
+introns_per_gene_combined <- bind_rows(
+  introns_per_gene_SkippedExon %>% mutate(group = "SkippedExon"),
+  introns_per_gene_MutuallyExclusive %>% mutate(group = "MutuallyExclusive"),
+  introns_per_gene_IntronRetention %>% mutate(group = "IntronRetention"),
+  introns_per_gene_Prime3_5 %>% mutate(group = "Prime3_5")
+)
+
+# Perform ANOVA for intron count per gene
+anova_intron_count <- aov(intronCount ~ group, data = introns_per_gene_combined)
+summary(anova_intron_count)
+
+# Perform effect size test for intron count per gene
+EtaSq(anova_intron_count)
+```
+
+```{r}
+# Combine the intron lengths into a single data frame
+intron_lengths_combined <- bind_rows(
+  deduplicated_SkippedExon_introns %>% mutate(group = "SkippedExon"),
+  deduplicated_MutuallyExclusive_introns %>% mutate(group = "MutuallyExclusive"),
+  deduplicated_IntronRetention_introns %>% mutate(group = "IntronRetention"),
+  deduplicated_Prime3_5_introns %>% mutate(group = "Prime3_5")
+)
+
+# Perform ANOVA for intron length
+anova_intron_length <- aov(intronLength ~ group, data = intron_lengths_combined)
+summary(anova_intron_length)
+
+# Perform effect size test for intron length
+EtaSq(anova_intron_length)
+```
+```{r}
+# Now the same process is done for gene lengths 
+# Function to filter gene lengths based on the mean column for the genes from a file and save to new file
+filter_and_save_gene_lengths <- function(genes_file, gene_length_file, output_file) {
+  # Read the genes from the text file
+  genes <- readLines(genes_file)
+  
+  # Read the gene length file into a data frame
+  gene_lengths <- read.table(gene_length_file, header = TRUE, sep = "\t", stringsAsFactors = FALSE)
+  
+  # Filter the gene lengths data to include only the genes from the genes file
+  filtered_gene_lengths <- gene_lengths %>% filter(gene %in% genes)
+  
+  # Save the filtered gene lengths data to a new file
+  write.table(filtered_gene_lengths, file = output_file, sep = "\t", row.names = FALSE, col.names = TRUE, quote = FALSE)
+}
+
+# File path for the gene_length.txt file
+gene_length_file <- "gene_length.txt"
+
+# Apply the function to each set of genes and save the filtered gene lengths data
+filter_and_save_gene_lengths("SkippedExon_Genes.txt", gene_length_file, "SkippedExon_gene_lengths.txt")
+filter_and_save_gene_lengths("MutuallyExclusive_Genes.txt", gene_length_file, "MutuallyExclusive_gene_lengths.txt")
+filter_and_save_gene_lengths("IntronRetention_Genes.txt", gene_length_file, "IntronRetention_gene_lengths.txt")
+filter_and_save_gene_lengths("3_5_PrimeGenes.txt", gene_length_file, "3_5_Prime_gene_lengths.txt")
+
+```
+
+```{r}
+# Function to read and return the filtered gene lengths data frame
+read_gene_lengths <- function(gene_lengths_file) {
+  # Read the filtered gene lengths file into a data frame
+  gene_lengths <- read.table(gene_lengths_file, header = TRUE, sep = "\t", stringsAsFactors = FALSE)
+  
+  # Return the gene lengths data frame
+  return(gene_lengths)
+}
+
+# Read and assign each filtered gene lengths file to separate variables
+filtered_SkippedExon_gene_lengths <- read_gene_lengths("SkippedExon_gene_lengths.txt")
+
+filtered_MutuallyExclusive_gene_lengths <- read_gene_lengths("MutuallyExclusive_gene_lengths.txt")
+
+filtered_IntronRetention_gene_lengths <- read_gene_lengths("IntronRetention_gene_lengths.txt")
+
+filtered_Prime3_5_gene_lengths <- read_gene_lengths("3_5_Prime_gene_lengths.txt")
+
+# Print each filtered gene lengths data frame
+
+print(filtered_SkippedExon_gene_lengths)
+
+
+print(filtered_MutuallyExclusive_gene_lengths)
+
+
+print(filtered_IntronRetention_gene_lengths)
+
+
+print(filtered_Prime3_5_gene_lengths)
+```
+```{r}
+# Get summary statistics for gene lengths
+gene_length_summary_SkippedExon <- summary(filtered_SkippedExon_gene_lengths$mean)
+
+gene_length_summary_MutuallyExclusive <- summary(filtered_MutuallyExclusive_gene_lengths$mean)
+
+gene_length_summary_IntronRetention <- summary(filtered_IntronRetention_gene_lengths$mean)
+
+gene_length_summary_Prime3_5 <- summary(filtered_Prime3_5_gene_lengths$mean)
+
+# Print the summaries for gene lengths
+print(gene_length_summary_SkippedExon)
+
+print(gene_length_summary_MutuallyExclusive)
+
+print(gene_length_summary_IntronRetention)
+
+print(gene_length_summary_Prime3_5)
+```
+```{r}
+# Perform ANOVA for gene lengths
+gene_lengths_combined <- bind_rows(
+  filtered_SkippedExon_gene_lengths %>% mutate(group = "SkippedExon"),
+  filtered_MutuallyExclusive_gene_lengths %>% mutate(group = "MutuallyExclusive"),
+  filtered_IntronRetention_gene_lengths %>% mutate(group = "IntronRetention"),
+  filtered_Prime3_5_gene_lengths %>% mutate(group = "Prime3_5")
+)
+
+
+anova_gene_length <- aov(mean ~ group, data = gene_lengths_combined)
+summary(anova_gene_length)
+
+# Perform effect size test for gene lengths
+
+EtaSq(anova_gene_length)
+```
+
+```{r}
+# Perform ANOVA for GC content
+
+GC_SkippedExons <- read.csv("GC_SkippedExons.csv", header = TRUE, stringsAsFactors = FALSE)
+GC_MutuallyExclusive <- read.csv("GC_MutuallyExclusive.csv", header = TRUE, stringsAsFactors = FALSE)
+GC_IntronRetention <- read.csv("GC_IntronRetention.csv", header = TRUE, stringsAsFactors = FALSE)
+GC_3_5_Prime <- read.csv("GC_3_5_Prime.csv", header = TRUE, stringsAsFactors = FALSE)
+
+gc_content_combined <- bind_rows(
+  GC_SkippedExons %>% mutate(group = "SkippedExons"),
+  GC_MutuallyExclusive %>% mutate(group = "MutuallyExclusive"),
+  GC_IntronRetention %>% mutate(group = "IntronRetention"),
+  GC_3_5_Prime %>% mutate(group = "3_5_Prime")
+)
+
+
+anova_gene_length <- aov(gc_content ~ group, data = gc_content_combined)
+summary(anova_gene_length)
+
+# Perform effect size test
+
+EtaSq(anova_gene_length)
+```
+```{r}
+
+# Get summary statistics for GC content 
+
+print(summary(GC_SkippedExons$gc_content))
+
+print(summary(GC_MutuallyExclusive$gc_content))
+
+print(summary(GC_IntronRetention$gc_content))
+
+print(summary(GC_3_5_Prime$gc_content))
+```
+
+```{r}
+# Perform ANOVA for Splice Site Strength
+
+# #SSS = splice site strength
+
+SSS_SkippedExons <- read.csv("SSS_SkippedExons.txt", header = FALSE, col.names = "SSS")
+SSS_MutuallyExclusive <- read.csv("SSS_MutuallyExclusive.txt", header = FALSE, col.names = "SSS")
+SSS_IntronRetention <- read.csv("SSS_IntronRetention.txt", header = FALSE, col.names = "SSS")
+SSS_3_5_Prime <- read.csv("SSS_3_5_Prime.txt", header = FALSE, col.names = "SSS")
+
+# Combine the data frames into a single data frame
+sss_combined <- bind_rows(
+  SSS_SkippedExons %>% mutate(group = "SkippedExons"),
+  SSS_MutuallyExclusive %>% mutate(group = "MutuallyExclusive"),
+  SSS_IntronRetention %>% mutate(group = "IntronRetention"),
+  SSS_3_5_Prime %>% mutate(group = "3_5_Prime")
+)
+
+# Perform ANOVA for splice site strength
+anova_sss <- aov(SSS ~ group, data = sss_combined)
+summary(anova_sss)
+
+# Perform effect size test
+EtaSq(anova_sss)
+
+```
+```{r}
+
+# Get summary statistics for Splice Site Strength
+
+summary(SSS_SkippedExons$SSS)
+
+summary(SSS_MutuallyExclusive$SSS)
+
+summary(SSS_IntronRetention$SSS)
+
+summary(SSS_3_5_Prime$SSS)
+
+```
+

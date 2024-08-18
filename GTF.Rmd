@@ -1,0 +1,646 @@
+---
+title: "GTF"
+output: html_notebook
+date: "2024-07-15"
+---
+
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
+
+Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Ctrl+Shift+Enter*. 
+
+
+
+
+
+
+```{r}
+# Load necessary library
+
+
+library(ggridges)
+library(effsize)
+library(dplyr)
+library(ggplot2)
+library(car)
+library(tidyverse)
+
+```
+
+
+```{r}
+# Define the file paths
+files <- c("combined_tidy_3_5_prime.tsv",
+           "combined_tidy_Intron_Retention.tsv",
+           "combined_tidy_Mutually_ExclusiveExon.tsv",
+           "combined_tidy_SkippedExon.tsv")
+
+# Initialize an empty vector to store unique gene IDs
+unique_gene_ids <- c()
+
+# Function to read and extract unique gene IDs from a file
+extract_gene_ids <- function(file) {
+  df <- read.csv(file, sep = "\t")
+  if ("GeneID" %in% colnames(df)) {
+    return(unique(df$GeneID))
+  } else {
+    return(c())
+  }
+}
+
+# Using the function on each file to extract the genes
+for (file in files) {
+  gene_ids <- extract_gene_ids(file)
+  unique_gene_ids <- union(unique_gene_ids, gene_ids)
+}
+
+# Convert the unique gene IDs to a data frame
+unique_genes_df <- data.frame(GeneID = unique_gene_ids)
+
+# Save the result to a new file 
+write.csv(unique_genes_df, "unique_gene_ids.csv", row.names = FALSE)
+
+```
+
+```{r}
+# Filter the exons.bed data (from the human genome GTF) to include only the genes listed in unique_gene_ids.csv.
+
+# Define file paths
+exons_file <- "exons.bed"
+unique_genes_file <- "unique_gene_ids.csv"
+
+# Read the exons.bed file
+exons_df <- read.table(exons_file, sep = "\t", header = FALSE, stringsAsFactors = FALSE)
+colnames(exons_df) <- c("chrom", "chromStart", "chromEnd", "strand", "transcriptID", "geneID", "exonLength")
+
+# Read the unique_gene_ids.csv file
+unique_genes_df <- read.csv(unique_genes_file, stringsAsFactors = FALSE)
+
+# Filter the exons data to include only the genes in unique_gene_ids.csv
+filtered_exons_df <- exons_df %>% filter(geneID %in% unique_genes_df$GeneID)
+
+
+
+write.table(filtered_exons_df, "filtered_exons.bed", sep = "\t", row.names = FALSE, col.names = FALSE, quote = FALSE)
+```
+
+
+```{r}
+
+
+# Define the file path for the filtered exons.bed
+filtered_exons_file <- "filtered_exons.bed"
+
+
+# Read the filtered exons.bed file
+filtered_exons_df <- read.table(filtered_exons_file, sep = "\t", header = FALSE)
+colnames(filtered_exons_df) <- c("chrom", "chromStart", "chromEnd", "strand", "transcriptID", "geneID", "exonLength")
+
+# Display the first few rows of the filtered exons.bed file
+print(filtered_exons_df)
+```
+
+```{r}
+# Remove duplicated rows based on (chromstart) and (chromend) to ensure that each exon is counted once for the gene
+
+deduplicated_exons_df <- filtered_exons_df[!duplicated(filtered_exons_df[, c("chromStart", "chromEnd")]), ]
+
+print(deduplicated_exons_df)
+```
+
+
+```{r}
+# Summary statistics of exon lengths
+exon_length_summary <- summary(deduplicated_exons_df$exonLength)
+print(exon_length_summary)
+```
+
+
+
+```{r}
+
+# Count the number of exons per gene
+exons_per_gene <- deduplicated_exons_df %>%
+  group_by(geneID) %>% summarize(exonCount = n())
+# Summary statistics of exons per gene
+exons_per_gene_summary <- summary(exons_per_gene$exonCount)
+print(exons_per_gene_summary)
+
+```
+
+
+
+
+
+
+
+```{r}
+# Now the same process is done for the introns
+# Filter the introns data (from the human genome GTF) to include only the genes listed in unique_gene_ids.csv.
+
+# Define file paths
+introns_file <- "introns.bed"
+unique_genes_file <- "unique_gene_ids.csv"
+
+# Read the introns.bed file
+introns_df <- read.table(introns_file, sep = "\t", header = FALSE, stringsAsFactors = FALSE)
+colnames(introns_df) <- c("chrom", "chromStart", "chromEnd", "strand", "transcriptID", "geneID", "intronLength")
+
+# Read the unique_gene_ids.csv file
+unique_genes_df <- read.csv(unique_genes_file, stringsAsFactors = FALSE)
+
+# Filter the introns data to include only the genes in unique_gene_ids.csv
+filtered_introns_df <- introns_df %>% filter(geneID %in% unique_genes_df$GeneID)
+
+
+
+write.table(filtered_introns_df, "filtered_introns.bed", sep = "\t", row.names = FALSE, col.names = FALSE, quote = FALSE)
+```
+
+
+
+
+```{r}
+
+# Define the file path for the filtered introns.bed
+filtered_introns_file <- "filtered_introns.bed"
+
+
+# Read the filtered intron.bed file
+filtered_introns_df <- read.table(filtered_introns_file, sep = "\t", header = FALSE)
+
+colnames(filtered_introns_df) <- c("chrom", "chromStart", "chromEnd", "strand", "transcriptID", "geneID", "intronLength")
+
+# Display the first few rows of the filtered introns.bed file
+print(filtered_introns_df)
+```
+```{r}
+# Remove duplicated rows based on (chromstart) and (chromend) to ensure that each intron is counted once for the gene
+
+deduplicated_introns_df <- filtered_introns_df[!duplicated(filtered_introns_df[, c("chromStart", "chromEnd")]), ]
+
+print(deduplicated_introns_df)
+```
+```{r}
+# Summary statistics of intron lengths
+intron_length_summary <- summary(deduplicated_introns_df$intronLength)
+print(intron_length_summary)
+```
+```{r}
+
+# Count the number of introns per gene
+introns_per_gene <- deduplicated_introns_df %>%
+  group_by(geneID) %>% summarize(intronCount = n())
+# Summary statistics of introns per gene
+introns_per_gene_summary <- summary(introns_per_gene$intronCount)
+print(introns_per_gene_summary)
+
+```
+
+
+
+```{r}
+
+# The same process is done for the genes length
+
+# Filter the genes length data (from the human genome GTF) to include only the genes listed in unique_gene_ids.csv
+
+genesLength_file <- "gene_length.txt"
+unique_genes_file <- "unique_gene_ids.csv"
+
+# Read the genes length file
+geneLength_df <- read.table(genesLength_file, sep = "\t", header = TRUE, stringsAsFactors = FALSE)
+
+# Filter the data to include only the genes in unique_gene_ids.csv
+filtered_geneLength_df <- geneLength_df %>% filter(gene %in% unique_genes_df$GeneID)
+
+write.table(filtered_geneLength_df, "filtered_geneLength.txt", sep = "\t", row.names = FALSE, col.names = TRUE, quote = FALSE)
+```
+
+```{r}
+# Summary statistics of gene lengths based on the length of merged exons of isoforms of a gene
+
+geneLength_summary <- summary(filtered_geneLength_df$merge)
+print(geneLength_summary)
+
+```
+
+
+
+
+```{r}
+# Filter the human genome to include only the unaffected genes
+
+# Read the files into data frames 
+unique_genes <- read.csv("unique_gene_ids.csv") # CSV file containing IDs of mis-spliced genes
+colnames(unique_genes) <- c("gene")
+
+AllGenes <- read.table("gene_length.txt", header = TRUE)   # Text file listing lengths of all genes in the human genome
+
+AllExons <- read.table("exons.bed", sep = "\t", header = FALSE, stringsAsFactors = FALSE) # This file contains all exon lengths
+colnames(AllExons) <- c("chrom", "chromStart", "chromEnd", "strand", "transcriptID", "gene", "exonLength")
+
+AllIntrons <- read.table("introns.bed", sep = "\t", header = FALSE, stringsAsFactors = FALSE) # This file contains all intron lengths
+colnames(AllIntrons) <- c("chrom", "chromStart", "chromEnd", "strand", "transcriptID", "gene", "intronLength")
+
+# Filter out the mis-spliced genes 
+filtered_genes <- anti_join(AllGenes, unique_genes, by = "gene")
+filtered_exons <- anti_join(AllExons, unique_genes, by = "gene")
+filtered_introns <- anti_join(AllIntrons, unique_genes, by = "gene")
+
+
+write.table(filtered_genes$gene, "Unaffected_Genes.csv", row.names = FALSE, col.names = TRUE, quote = FALSE)
+write.table(filtered_genes, "Unaffected_GenesLength.txt", row.names = FALSE, col.names = TRUE, quote = FALSE, sep = "\t")
+write.table(filtered_exons, "Unaffected_ExonLength.txt", row.names = FALSE, col.names = TRUE, quote = FALSE, sep = "\t")
+write.table(filtered_introns, "Unaffected_IntronLength.txt", row.names = FALSE, col.names = TRUE, quote = FALSE, sep = "\t")
+```
+
+```{r}
+unaffected_GenesLength <- read.table("Unaffected_GenesLength.txt", sep = "\t", header = TRUE, stringsAsFactors = FALSE)
+unaffected_ExonLength <- read.table("Unaffected_ExonLength.txt", sep = "\t", header = TRUE, stringsAsFactors = FALSE)
+unaffected_IntronLength <- read.table("Unaffected_IntronLength.txt", sep = "\t", header = TRUE, stringsAsFactors = FALSE)
+
+```
+
+```{r}
+print(unaffected_GenesLength)
+print(unaffected_ExonLength)
+print(unaffected_IntronLength)
+```
+
+```{r}
+# Remove duplicated rows based on (chromstart) and (chromend) to ensure that each exon/intron is counted once for the gene
+
+deduplicated_exons_df <- unaffected_ExonLength[!duplicated(unaffected_ExonLength[, c("chromStart", "chromEnd")]), ]
+
+deduplicated_introns_df <- unaffected_IntronLength[!duplicated(unaffected_IntronLength[, c("chromStart", "chromEnd")]), ]
+
+print(deduplicated_exons_df)
+print(deduplicated_introns_df)
+
+```
+
+```{r}
+# Summary statistics of gene lengths for the unaffected gene
+
+geneLength_summary <- summary(unaffected_GenesLength$merge)
+print(geneLength_summary)
+
+```
+
+```{r}
+# Summary statistics of exon lengths for the unaffected gene
+
+exon_length_summary <- summary(deduplicated_exons_df$exonLength)
+print(exon_length_summary)
+
+# Count the number of exons per gene
+exons_per_gene <- deduplicated_exons_df %>%
+  group_by(gene) %>% summarize(exonCount = n())
+# Summary statistics of exons per gene
+exons_per_gene_summary <- summary(exons_per_gene$exonCount)
+print(exons_per_gene_summary)
+
+# Save the exons count per gene and the mean length of exons per gene as csv files
+write.csv(exons_per_gene, file = "Unaffected_genes_ExonCount.csv", row.names = FALSE)
+Exon_Length_data <- deduplicated_exons_df %>%
+  group_by(gene) %>%
+  summarise(exonLength = mean(exonLength))
+write.csv(Exon_Length_data, file = "Unaffected_genes_ExonLength.csv", row.names = FALSE)
+
+
+```
+
+
+
+
+```{r}
+# Summary statistics of intron lengths for the unaffected gene
+
+intron_length_summary <- summary(deduplicated_introns_df$intronLength)
+print(intron_length_summary)
+
+# Count the number of introns per gene
+introns_per_gene <- deduplicated_introns_df %>%
+  group_by(gene) %>% summarize(intronCount = n())
+# Summary statistics of introns per gene
+introns_per_gene_summary <- summary(introns_per_gene$intronCount)
+print(introns_per_gene_summary)
+
+# Save the introns count per gene and the mean length of introns per gene as csv files
+write.csv(introns_per_gene, file = "Unaffected_genes_IntronCount.csv", row.names = FALSE)
+Intron_Length_data <- deduplicated_introns_df %>%
+  group_by(gene) %>%
+  summarise(intronLength = mean(intronLength))
+write.csv(Intron_Length_data, file = "Unaffected_genes_IntronLength.csv", row.names = FALSE)
+
+```
+
+```{r}
+# Now we determine whether the differences in the lengths of mis-spliced and unaffected genes/exons/introns are significant by using a t-test.
+
+# Define the files path
+significant_exons_file <- "filtered_exons.bed"
+significant_introns_file <- "filtered_introns.bed"
+
+
+unaffected_exons_file <- "Unaffected_ExonLength.txt"
+unaffected_introns_file <- "Unaffected_intronLength.txt"
+
+```
+
+```{r}
+# We read the files and remove the duplicates
+
+significant_exons_df <- read.table(significant_exons_file, sep = "\t", header = FALSE)
+colnames(significant_exons_df) <- c("chrom", "chromStart", "chromEnd", "strand", "transcriptID", "geneID", "exonLength")
+significant_exons_deduplicated <- significant_exons_df[!duplicated(significant_exons_df[, c("chromStart", "chromEnd")]), ]
+
+
+significant_introns_df <- read.table(significant_introns_file, sep = "\t", header = FALSE)
+colnames(significant_introns_df) <- c("chrom", "chromStart", "chromEnd", "strand", "transcriptID", "geneID", "intronLength")
+significant_deduplicated_introns_df <- significant_introns_df[!duplicated(significant_introns_df[, c("chromStart", "chromEnd")]), ]
+
+unaffected_ExonLength <- read.table(unaffected_exons_file, sep = "\t", header = TRUE, stringsAsFactors = FALSE)
+unaffected_IntronLength <- read.table(unaffected_introns_file, sep = "\t", header = TRUE, stringsAsFactors = FALSE)
+
+unaffected_deduplicated_exons_df <- unaffected_ExonLength[!duplicated(unaffected_ExonLength[, c("chromStart", "chromEnd")]), ]
+unaffected_deduplicated_introns_df <- unaffected_IntronLength[!duplicated(unaffected_IntronLength[, c("chromStart", "chromEnd")]), ]
+
+```
+
+```{r}
+# Calculate the number of exons per gene
+significant_exons_per_gene <- significant_exons_deduplicated %>%
+  group_by(geneID) %>%
+  summarise(exon_count = n())
+
+unaffected_exons_per_gene <- unaffected_deduplicated_exons_df %>%
+  group_by(gene) %>%
+  summarise(exon_count = n())
+
+```
+
+
+
+
+```{r}
+# Combine the data 
+combined_data <- data.frame(
+  exon_count = c(significant_exons_per_gene$exon_count, unaffected_exons_per_gene$exon_count),
+  group = factor(rep(c("Significant", "Unaffected"), 
+                     c(nrow(significant_exons_per_gene), nrow(unaffected_exons_per_gene))))
+)
+
+# Check the structure of the combined data frame
+print(combined_data)
+
+# T-test
+t.test(combined_data$exon_count~combined_data$group, mu=0, alt= "two.sided", conf= 0.95, var.eq=F )
+# Effect size test
+cohen.d(combined_data$exon_count,combined_data$group )
+```
+
+
+
+```{r}
+# the same is done for the exons length 
+
+significant_exons_length <- significant_exons_deduplicated$exonLength
+
+unaffected_exons_length <- unaffected_deduplicated_exons_df$exonLength
+
+
+combined_data <- data.frame(
+  exon_length = c(significant_exons_length, unaffected_exons_length),
+  group = factor(rep(c("Significant", "Unaffected"), 
+                     c(nrow(significant_exons_deduplicated), nrow(unaffected_deduplicated_exons_df))))
+)
+
+# T-test
+t.test(combined_data$exon_length~combined_data$group, mu=0, alt= "two.sided", conf= 0.95, var.eq=F)
+# Effect size test
+cohen.d(combined_data$exon_length,combined_data$group )
+
+```
+
+```{r}
+
+combined_data <- bind_rows(
+  significant_exons_per_gene %>% rename(gene = geneID) %>% mutate(group = "Significant"),
+  unaffected_exons_per_gene %>% mutate(group = "Unaffected")
+)
+
+# Plot using ggridges
+ggplot(combined_data, aes(x = exon_count, y = group, fill = group)) +
+  geom_density_ridges(alpha = 0.7) +
+  scale_x_log10() +
+  labs(title = "Distribution of Exons per Gene",
+       x = "Exon Counts Per Gene",
+       y = "Group") +
+  theme_minimal() +
+  theme(legend.position = "none")
+```
+```{r}
+combined_exon_length_data <- data.frame(
+  exon_length = c(significant_exons_length, unaffected_exons_length),
+  group = factor(rep(c("Significant", "Unaffected"), 
+                     c(length(significant_exons_length), length(unaffected_exons_length))))
+)
+
+# Plot using ggridges
+ggplot(combined_exon_length_data, aes(x = exon_length, y = group, fill = group)) +
+  geom_density_ridges(alpha = 0.7) +
+   scale_x_log10() +
+  labs(title = "Distribution of Exon Lengths",
+       x = "Exon Length",
+       y = "Group") +
+  theme_minimal() +
+  theme(legend.position = "none")
+```
+
+
+
+
+```{r}
+# introns length 
+
+significant_introns_length <- significant_deduplicated_introns_df$intronLength
+
+unaffected_introns_length <- unaffected_deduplicated_introns_df$intronLength
+
+
+combined_data <- data.frame(
+  introns_length = c(significant_introns_length, unaffected_introns_length),
+  group = factor(rep(c("Significant", "Unaffected"), 
+                     c(nrow(significant_deduplicated_introns_df), nrow(unaffected_deduplicated_introns_df))))
+)
+
+# T-test
+t.test(combined_data$introns_length~combined_data$group, mu=0, alt= "two.sided", conf= 0.95, var.eq=F)
+# Effect size test
+cohen.d(combined_data$introns_length,combined_data$group)
+```
+```{r}
+# introns per gene
+significant_introns_per_gene <- significant_deduplicated_introns_df %>%
+  group_by(geneID) %>%
+  summarise(introns_count = n())
+
+unaffected_introns_per_gene <- unaffected_deduplicated_introns_df %>%
+  group_by(gene) %>%
+  summarise(introns_count = n())
+
+combined_data <- data.frame(
+  introns_count = c(significant_introns_per_gene$introns_count, unaffected_introns_per_gene$introns_count),
+  group = factor(rep(c("Significant", "Unaffected"), 
+                     c(nrow(significant_introns_per_gene), nrow(unaffected_introns_per_gene))))
+)
+
+
+ # T-test
+t.test(combined_data$introns_count~combined_data$group, mu=0, alt= "two.sided", conf= 0.95, var.eq=F)
+# Effect size test
+cohen.d(combined_data$introns_count,combined_data$group)
+```
+
+```{r}
+combined_introns_length_data <- data.frame(
+ introns_length = c(significant_introns_length, unaffected_introns_length),
+  group = factor(rep(c("Significant", "Unaffected"), 
+                     c(length(significant_introns_length), length(unaffected_introns_length))))
+)
+
+# Plot using ggridges
+ggplot(combined_introns_length_data, aes(x = introns_length, y = group, fill = group)) +
+  geom_density_ridges(alpha = 0.7) +
+   scale_x_log10() +
+  labs(title = "Distribution of intron Lengths",
+       x = "intron Length",
+       y = "Group") +
+  theme_minimal() +
+  theme(legend.position = "none")
+```
+```{r}
+combined_data <- bind_rows(
+  significant_introns_per_gene %>% rename(gene = geneID) %>% mutate(group = "Significant"),
+  unaffected_introns_per_gene %>% mutate(group = "Unaffected")
+)
+
+# Plot using ggridges
+ggplot(combined_data, aes(x = introns_count, y = group, fill = group)) +
+  geom_density_ridges(alpha = 0.7, scale = 1.5) +
+  scale_x_log10() +
+  labs(title = "Distribution of introns per Gene",
+       x = "Intron Counts Per Gene",
+       y = "Group") +
+  theme_minimal() +
+  theme(legend.position = "none")
+```
+```{r}
+# GC content
+GC_significant <- read.csv("GC_ExonsSignificant.csv")
+GC_Unaffected <- read.csv("GC_ExonsUnaffected.csv")
+
+GC_significant <- na.omit(GC_significant)
+GC_Unaffected <- na.omit(GC_Unaffected)
+
+significant_GC <- GC_significant$gc_content
+
+unaffected_GC <- GC_Unaffected$gc_content
+
+
+combined_data <- data.frame(
+  GC = c(significant_GC, unaffected_GC),
+  group = factor(rep(c("Significant", "Unaffected"), 
+                     c(nrow(GC_significant), nrow(GC_Unaffected))))
+)
+
+
+ # T-test
+t.test(combined_data$GC~combined_data$group, mu=0, alt= "two.sided", conf= 0.95, var.eq=F )
+# Effect size test
+cohen.d(combined_data$GC,combined_data$group)
+
+```
+
+```{r}
+print(combined_data)
+```
+
+```{r}
+#Splice Site Strengths 
+
+SSS_significant <- read.csv("SSS_significantGenes.txt", header = FALSE, col.names = "SSS") #SSS = splice site strength
+SSS_Unaffected <- read.csv("SSS_UnaffectedGenes.txt", header = FALSE, col.names = "SSS")
+
+
+
+
+
+
+combined_data <- data.frame(
+  SSS = c(SSS_significant$SSS, SSS_Unaffected$SSS),
+  group = factor(rep(c("Significant", "Unaffected"), 
+                     c(nrow(SSS_significant), nrow(SSS_Unaffected))))
+)
+
+
+ # T-test
+t.test(combined_data$SSS~combined_data$group, mu=0, alt= "two.sided", conf= 0.95, var.eq=F)
+# Effect size test
+cohen.d(combined_data$SSS,combined_data$group)
+```
+
+
+```{r}
+#Gene Length
+#Using merged column
+
+
+Significant <- read.table("filtered_geneLength.txt", sep = "\t", header = TRUE, stringsAsFactors = FALSE)
+Unaffected <- read.table("Unaffected_GenesLength.txt", sep = "\t", header = TRUE, stringsAsFactors = FALSE)
+
+combined_data <- data.frame(
+  Length = c(Significant$merged, Unaffected$merged),
+  group = factor(rep(c("Significant", "Unaffected"), 
+                     c(nrow(Significant), nrow(Unaffected))))
+)
+
+
+ # T-test
+t.test(combined_data$Length~combined_data$group, mu=0, alt= "two.sided", conf= 0.95, var.eq=F)
+# Effect size test
+cohen.d(combined_data$Length,combined_data$group)
+
+
+```
+```{r}
+#Gene Length
+#Using mean column
+
+
+Significant <- read.table("filtered_geneLength.txt", sep = "\t", header = TRUE, stringsAsFactors = FALSE)
+Unaffected <- read.table("Unaffected_GenesLength.txt", sep = "\t", header = TRUE, stringsAsFactors = FALSE)
+
+combined_data <- data.frame(
+  Length = c(Significant$mean, Unaffected$mean),
+  group = factor(rep(c("Significant", "Unaffected"), 
+                     c(nrow(Significant), nrow(Unaffected))))
+)
+
+
+ # T-test
+t.test(combined_data$Length~combined_data$group, mu=0, alt= "two.sided", conf= 0.95, var.eq=F)
+# Effect size test
+cohen.d(combined_data$Length,combined_data$group)
+```
+
+```{r}
+# Saving the unaffected genes length as csv by selectin the gene and mean columns
+selected_columns <- unaffected_GenesLength %>%
+  select(gene, mean) %>%
+  rename(GeneLength = mean)
+write.csv(selected_columns, file = "Unaffected_genesLength_mean.csv", row.names = FALSE)
+
+```
+
